@@ -1,0 +1,49 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --gray-50: #fafafa;
+  --gray-100: #f4f4f5;
+  --gray-200: #e4e4e7;
+  --gray-300: #d4d4d8;
+  --gray-400: #a1a1aa;
+  --gray-500: #71717a;
+  --gray-600: #52525b;
+  --gray-700: #3f3f46;
+  --gray-800: #27272a;
+  --gray-900: #18181b;
+  --gray-950: #09090b;
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --background: #ffffff;
+  --foreground: #000000;
+  --border: 1px solid var(--gray-200);
+  --focus-ring: 0 0 0 3px rgba(0, 0, 0, 0.1);
+}
+
+.dark {
+  --background: #000000;
+  --foreground: #ffffff;
+  --border: 1px solid var(--gray-800);
+  --focus-ring: 0 0 0 3px rgba(255, 255, 255, 0.12);
+}
+
+@layer base {
+  body {
+    @apply bg-[var(--background)] text-[var(--foreground)] font-sans antialiased;
+  }
+}
+
+@layer utilities {
+  .border-default {
+    border: 1px solid var(--gray-200);
+  }
+  .dark .border-default {
+    border-color: var(--gray-800);
+  }
+  .focus-ring {
+    @apply outline-none focus-visible:ring-[3px] focus-visible:ring-black/10 dark:focus-visible:ring-white/[0.12];
+  }
+}
