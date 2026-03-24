@@ -38,8 +38,9 @@ func main() {
 
 	db := mongoClient.Database(cfg.MongoDatabase)
 	jobRepo := repository.NewJobRepository(db)
+	jobLogRepo := repository.NewJobLogRepository(db)
 	agent := claudecode.New()
-	ex := executor.NewExecutor(agent, jobRepo, cfg.EncryptionKey, cfg.WorkDir)
+	ex := executor.NewExecutor(agent, jobRepo, jobLogRepo, cfg.EncryptionKey, cfg.WorkDir)
 	p := pool.New(cfg.MaxConcurrentJobs)
 	jobsH := handler.NewJobsHandler(cfg.RunnerSecret, p, ex)
 

@@ -127,15 +127,3 @@ func (r *mongoJobRepository) UpdateJobFields(ctx context.Context, id string, sta
 	return nil
 }
 
-func (r *mongoJobRepository) AppendLog(ctx context.Context, id string, entry domain.LogEntry) error {
-	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
-	defer cancel()
-	_, err := r.coll.UpdateOne(ctx, bson.M{"_id": id}, bson.M{
-		"$push": bson.M{"logs": entry},
-		"$set":  bson.M{"updated_at": time.Now().UTC()},
-	})
-	if err != nil {
-		return fmt.Errorf("job repository: append log: %w", err)
-	}
-	return nil
-}

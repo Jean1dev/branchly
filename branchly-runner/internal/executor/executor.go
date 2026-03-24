@@ -34,13 +34,14 @@ type RunJobInput struct {
 type Executor struct {
 	agent    domain.Agent
 	jobs     *repository.JobRepository
+	jobLogs  *repository.JobLogRepository
 	encKey   []byte
 	workDir  string
 	appendMu sync.Mutex
 }
 
-func NewExecutor(agent domain.Agent, jobs *repository.JobRepository, encKey []byte, workDir string) *Executor {
-	return &Executor{agent: agent, jobs: jobs, encKey: encKey, workDir: workDir}
+func NewExecutor(agent domain.Agent, jobs *repository.JobRepository, jobLogs *repository.JobLogRepository, encKey []byte, workDir string) *Executor {
+	return &Executor{agent: agent, jobs: jobs, jobLogs: jobLogs, encKey: encKey, workDir: workDir}
 }
 
 func persistCtx() (context.Context, context.CancelFunc) {
@@ -52,11 +53,13 @@ func (e *Executor) appendLog(jobID string, lvl domain.LogLevel, msg string) {
 	defer e.appendMu.Unlock()
 	ctx, cancel := persistCtx()
 	defer cancel()
-	_ = e.jobs.AppendLog(ctx, jobID, domain.LogEntry{
+	if err := e.jobLogs.Append(ctx, jobID, domain.LogEntry{
 		Timestamp: time.Now().UTC(),
 		Level:     lvl,
 		Message:   msg,
-	})
+	}); err != nil {
+		slog.Warn("append job log failed", "job_id", jobID, "error", err)
+	}
 }
 
 func (e *Executor) markFailed(jobID, branchName, msg string) {
@@ -64,11 +67,13 @@ func (e *Executor) markFailed(jobID, branchName, msg string) {
 	defer e.appendMu.Unlock()
 	ctx, cancel := persistCtx()
 	defer cancel()
-	_ = e.jobs.AppendLog(ctx, jobID, domain.LogEntry{
+	if err := e.jobLogs.Append(ctx, jobID, domain.LogEntry{
 		Timestamp: time.Now().UTC(),
 		Level:     domain.LogLevelError,
 		Message:   msg,
-	})
+	}); err != nil {
+		slog.Warn("append job log failed", "job_id", jobID, "error", err)
+	}
 	t := time.Now().UTC()
 	_ = e.jobs.UpdateJobFields(ctx, jobID, domain.JobStatusFailed, "", branchName, &t)
 }
@@ -79,11 +84,13 @@ func (e *Executor) markCompleted(jobID, branchName, prURL, summary string) {
 	ctx, cancel := persistCtx()
 	defer cancel()
 	if strings.TrimSpace(summary) != "" {
-		_ = e.jobs.AppendLog(ctx, jobID, domain.LogEntry{
+		if err := e.jobLogs.Append(ctx, jobID, domain.LogEntry{
 			Timestamp: time.Now().UTC(),
 			Level:     domain.LogLevelSuccess,
 			Message:   summary,
-		})
+		}); err != nil {
+			slog.Warn("append job log failed", "job_id", jobID, "error", err)
+		}
 	}
 	t := time.Now().UTC()
 	_ = e.jobs.UpdateJobFields(ctx, jobID, domain.JobStatusCompleted, prURL, branchName, &t)

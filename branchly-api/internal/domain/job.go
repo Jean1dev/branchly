@@ -36,7 +36,7 @@ type Job struct {
 	Status       JobStatus  `bson:"status"`
 	BranchName   string     `bson:"branch_name"`
 	PRUrl        string     `bson:"pr_url,omitempty"`
-	Logs         []LogEntry `bson:"logs"`
+	Logs         []LogEntry `bson:"logs,omitempty"`
 	CreatedAt    time.Time  `bson:"created_at"`
 	UpdatedAt    time.Time  `bson:"updated_at"`
 	CompletedAt  *time.Time `bson:"completed_at,omitempty"`
@@ -48,6 +48,5 @@ type JobRepository interface {
 	FindByUserID(ctx context.Context, userID string, status *JobStatus, repositoryID *string) ([]*Job, error)
 	UpdateStatus(ctx context.Context, id string, status JobStatus) error
 	UpdateJobFields(ctx context.Context, id string, status JobStatus, prURL string, branchName string, completedAt *time.Time) error
-	AppendLog(ctx context.Context, id string, entry LogEntry) error
 	FindByIDForUser(ctx context.Context, id string, userID string) (*Job, error)
 }

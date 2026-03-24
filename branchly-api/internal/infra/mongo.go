@@ -74,6 +74,18 @@ func EnsureIndexes(ctx context.Context, db *mongo.Database) error {
 		}
 	}
 
+	jobLogs := db.Collection("job_logs")
+	_, err = jobLogs.Indexes().CreateOne(ctx, mongo.IndexModel{
+		Keys: bson.D{
+			{Key: "job_id", Value: 1},
+			{Key: "_id", Value: 1},
+		},
+		Options: options.Index().SetName("idx_job_logs_job_id_id"),
+	})
+	if err != nil {
+		return fmt.Errorf("infra/mongo: job_logs index: %w", err)
+	}
+
 	slog.Info("mongo indexes ensured")
 	return nil
 }

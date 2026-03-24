@@ -48,11 +48,12 @@ func main() {
 	userRepo := repository.NewUserRepository(db)
 	repoRepo := repository.NewConnectedRepositoryRepository(db)
 	jobRepo := repository.NewJobRepository(db)
+	jobLogRepo := repository.NewJobLogRepository(db)
 
 	authSvc := service.NewAuthService(cfg, userRepo)
 	repoSvc := service.NewRepositoryService(cfg, userRepo, repoRepo)
 	runner := infra.NewRunnerClient(cfg.RunnerURL, cfg.RunnerSecret)
-	jobSvc := service.NewJobService(cfg, jobRepo, repoRepo, userRepo, runner)
+	jobSvc := service.NewJobService(cfg, jobRepo, jobLogRepo, repoRepo, userRepo, runner)
 
 	repoH := handler.NewRepositoryHandler(repoSvc)
 	jobH := handler.NewJobHandler(jobSvc)

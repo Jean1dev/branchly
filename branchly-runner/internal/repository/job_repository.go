@@ -18,19 +18,6 @@ func NewJobRepository(db *mongo.Database) *JobRepository {
 	return &JobRepository{coll: db.Collection("jobs")}
 }
 
-func (r *JobRepository) AppendLog(ctx context.Context, id string, entry domain.LogEntry) error {
-	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
-	defer cancel()
-	_, err := r.coll.UpdateOne(ctx, bson.M{"_id": id}, bson.M{
-		"$push": bson.M{"logs": entry},
-		"$set":  bson.M{"updated_at": time.Now().UTC()},
-	})
-	if err != nil {
-		return fmt.Errorf("job repository: append log: %w", err)
-	}
-	return nil
-}
-
 func (r *JobRepository) UpdateJobFields(ctx context.Context, id string, status domain.JobStatus, prURL string, branchName string, completedAt *time.Time) error {
 	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()

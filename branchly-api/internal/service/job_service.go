@@ -11,18 +11,20 @@ import (
 	"github.com/branchly/branchly-api/internal/domain"
 	"github.com/branchly/branchly-api/internal/infra"
 	"github.com/google/uuid"
+	"go.mongodb.org/mongo-driver/bson/primitive"
 )
 
 type JobService struct {
-	cfg    *config.Config
-	jobs   domain.JobRepository
-	repos  domain.ConnectedRepositoryRepository
-	users  domain.UserRepository
-	runner *infra.RunnerClient
+	cfg     *config.Config
+	jobs    domain.JobRepository
+	jobLogs domain.JobLogRepository
+	repos   domain.ConnectedRepositoryRepository
+	users   domain.UserRepository
+	runner  *infra.RunnerClient
 }
 
-func NewJobService(cfg *config.Config, jobs domain.JobRepository, repos domain.ConnectedRepositoryRepository, users domain.UserRepository, runner *infra.RunnerClient) *JobService {
-	return &JobService{cfg: cfg, jobs: jobs, repos: repos, users: users, runner: runner}
+func NewJobService(cfg *config.Config, jobs domain.JobRepository, jobLogs domain.JobLogRepository, repos domain.ConnectedRepositoryRepository, users domain.UserRepository, runner *infra.RunnerClient) *JobService {
+	return &JobService{cfg: cfg, jobs: jobs, jobLogs: jobLogs, repos: repos, users: users, runner: runner}
 }
 
 func promptToBranchSlug(prompt string) string {
@@ -78,7 +80,6 @@ func (s *JobService) Create(ctx context.Context, userID string, in CreateJobInpu
 		Prompt:       in.Prompt,
 		Status:       domain.JobStatusPending,
 		BranchName:   promptToBranchSlug(in.Prompt),
-		Logs:         nil,
 		CreatedAt:    now,
 		UpdatedAt:    now,
 	}
@@ -111,10 +112,28 @@ func ptrTime(t time.Time) *time.Time {
 	return &t
 }
 
+func (s *JobService) JobMeta(ctx context.Context, userID, jobID string) (*domain.Job, error) {
+	return s.jobs.FindByIDForUser(ctx, jobID, userID)
+}
+
 func (s *JobService) Get(ctx context.Context, userID, jobID string) (*domain.Job, error) {
 	j, err := s.jobs.FindByIDForUser(ctx, jobID, userID)
 	if err != nil {
 		return nil, fmt.Errorf("job service: get: %w", err)
+	}
+	if j == nil {
+		return nil, nil
+	}
+	const tail = 5000
+	rows, err := s.jobLogs.ListTailByJobID(ctx, jobID, tail)
+	if err != nil {
+		return nil, fmt.Errorf("job service: get logs: %w", err)
+	}
+	if len(rows) > 0 {
+		j.Logs = make([]domain.LogEntry, len(rows))
+		for i := range rows {
+			j.Logs[i] = rows[i].Entry
+		}
 	}
 	return j, nil
 }
@@ -140,8 +159,34 @@ func (s *JobService) UpdateStatusInternal(ctx context.Context, jobID string, sta
 }
 
 func (s *JobService) AppendLogInternal(ctx context.Context, jobID string, entry domain.LogEntry) error {
-	if err := s.jobs.AppendLog(ctx, jobID, entry); err != nil {
+	if err := s.jobLogs.Append(ctx, jobID, entry); err != nil {
 		return fmt.Errorf("job service: internal log: %w", err)
 	}
 	return nil
+}
+
+func (s *JobService) ListJobLogsAsc(ctx context.Context, userID, jobID string, limit int) ([]domain.StoredJobLog, error) {
+	j, err := s.jobs.FindByIDForUser(ctx, jobID, userID)
+	if err != nil {
+		return nil, fmt.Errorf("job service: list logs auth: %w", err)
+	}
+	if j == nil {
+		return nil, nil
+	}
+	return s.jobLogs.ListByJobID(ctx, jobID, limit)
+}
+
+func (s *JobService) ListJobLogsAfter(ctx context.Context, userID, jobID string, after primitive.ObjectID, limit int) ([]domain.StoredJobLog, *domain.Job, error) {
+	j, err := s.jobs.FindByIDForUser(ctx, jobID, userID)
+	if err != nil {
+		return nil, nil, fmt.Errorf("job service: list logs after auth: %w", err)
+	}
+	if j == nil {
+		return nil, nil, nil
+	}
+	rows, err := s.jobLogs.ListByJobIDAfter(ctx, jobID, after, limit)
+	if err != nil {
+		return nil, nil, fmt.Errorf("job service: list logs after: %w", err)
+	}
+	return rows, j, nil
 }
