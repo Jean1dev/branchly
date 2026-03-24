@@ -70,10 +70,6 @@ func (s *JobService) Create(ctx context.Context, userID string, in CreateJobInpu
 	if u == nil {
 		return nil, ErrNotFound
 	}
-	ghToken, err := infra.Decrypt(u.EncryptedToken, s.cfg.EncryptionKey)
-	if err != nil {
-		return nil, fmt.Errorf("job service: create: decrypt: %w", err)
-	}
 	now := time.Now().UTC()
 	job := &domain.Job{
 		ID:           uuid.New().String(),
@@ -92,12 +88,13 @@ func (s *JobService) Create(ctx context.Context, userID string, in CreateJobInpu
 	dispatchCtx, cancel := context.WithTimeout(ctx, 12*time.Second)
 	defer cancel()
 	err = s.runner.DispatchJob(dispatchCtx, infra.DispatchJobPayload{
-		JobID:              job.ID,
-		RepositoryFullName: repo.FullName,
-		DefaultBranch:      repo.DefaultBranch,
-		BranchName:         job.BranchName,
-		Prompt:             job.Prompt,
-		GithubToken:        ghToken,
+		JobID:           job.ID,
+		UserID:          userID,
+		RepositoryName:  repo.FullName,
+		DefaultBranch:   repo.DefaultBranch,
+		BranchName:      job.BranchName,
+		Prompt:          job.Prompt,
+		EncryptedToken:  u.EncryptedToken,
 	})
 	if err != nil {
 		_ = s.jobs.UpdateJobFields(ctx, job.ID, domain.JobStatusFailed, "", job.BranchName, ptrTime(time.Now().UTC()))

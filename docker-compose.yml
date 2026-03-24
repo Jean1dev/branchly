@@ -1,29 +1,30 @@
+networks:
+  branchly:
+    driver: bridge
+
+volumes:
+  mongo_data:
+
 services:
   mongodb:
-    image: mongo:7
-    container_name: branchly-mongodb
+    image: mongo:8.0
+    volumes:
+      - mongo_data:/data/db
     ports:
       - "27017:27017"
-    volumes:
-      - branchly-mongo-data:/data/db
     networks:
-      - branchly-network
-
-  branchly-runner:
-    build:
-      context: ./branchly-runner
-      dockerfile: Dockerfile
-    container_name: branchly-runner
-    ports:
-      - "8081:8081"
-    networks:
-      - branchly-network
+      - branchly
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
 
   branchly-api:
     build:
       context: ./branchly-api
       dockerfile: Dockerfile
-    container_name: branchly-api
     ports:
       - "8080:8080"
     env_file:
@@ -31,15 +32,30 @@ services:
         required: false
       - path: ./branchly-api/.env
         required: false
+    environment:
+      MONGODB_URI: mongodb://mongodb:27017
+      RUNNER_URL: http://branchly-runner:8081
     depends_on:
-      - mongodb
-      - branchly-runner
+      mongodb:
+        condition: service_healthy
     networks:
-      - branchly-network
+      - branchly
 
-volumes:
-  branchly-mongo-data:
-
-networks:
-  branchly-network:
-    name: branchly-network
+  branchly-runner:
+    build:
+      context: ./branchly-runner
+      dockerfile: Dockerfile
+    env_file:
+      - path: ./branchly-runner/.env.example
+        required: false
+      - path: ./branchly-runner/.env
+        required: false
+    environment:
+      MONGODB_URI: mongodb://mongodb:27017
+    depends_on:
+      mongodb:
+        condition: service_healthy
+    networks:
+      - branchly
+    volumes:
+      - /tmp/branchly-jobs:/tmp/branchly-jobs

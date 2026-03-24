@@ -24,6 +24,8 @@ type Config struct {
 
 	RunnerURL string
 
+	RunnerSecret string
+
 	FrontendURL    string
 	AllowedOrigins []string
 	InternalSecret string
@@ -94,6 +96,11 @@ func Load() (*Config, error) {
 		return nil, fmt.Errorf("config: INTERNAL_API_SECRET is required")
 	}
 
+	runnerSecret := strings.TrimSpace(os.Getenv("RUNNER_SECRET"))
+	if runnerSecret == "" {
+		runnerSecret = internalSecret
+	}
+
 	return &Config{
 		Port:                port,
 		MongoURI:            mongoURI,
@@ -102,6 +109,7 @@ func Load() (*Config, error) {
 		JWTTTLDays:          ttlDays,
 		EncryptionKey:       encKey,
 		RunnerURL:           strings.TrimSuffix(runnerURL, "/"),
+		RunnerSecret:        runnerSecret,
 		FrontendURL:         strings.TrimSuffix(frontend, "/"),
 		AllowedOrigins: origins,
 		InternalSecret: internalSecret,

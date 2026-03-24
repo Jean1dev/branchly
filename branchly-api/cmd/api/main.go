@@ -51,7 +51,7 @@ func main() {
 
 	authSvc := service.NewAuthService(cfg, userRepo)
 	repoSvc := service.NewRepositoryService(cfg, userRepo, repoRepo)
-	runner := infra.NewRunnerClient(cfg.RunnerURL)
+	runner := infra.NewRunnerClient(cfg.RunnerURL, cfg.RunnerSecret)
 	jobSvc := service.NewJobService(cfg, jobRepo, repoRepo, userRepo, runner)
 
 	repoH := handler.NewRepositoryHandler(repoSvc)

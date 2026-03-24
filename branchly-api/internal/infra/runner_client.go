@@ -12,22 +12,25 @@ import (
 )
 
 type DispatchJobPayload struct {
-	JobID              string `json:"job_id"`
-	RepositoryFullName string `json:"repository_full_name"`
-	DefaultBranch      string `json:"default_branch"`
-	BranchName         string `json:"branch_name"`
-	Prompt             string `json:"prompt"`
-	GithubToken        string `json:"github_token"`
+	JobID            string `json:"job_id"`
+	UserID           string `json:"user_id"`
+	RepositoryName   string `json:"repository_name"`
+	DefaultBranch    string `json:"default_branch"`
+	BranchName       string `json:"branch_name"`
+	Prompt           string `json:"prompt"`
+	EncryptedToken   string `json:"encrypted_token"`
 }
 
 type RunnerClient struct {
-	baseURL    string
-	httpClient *http.Client
+	baseURL      string
+	runnerSecret string
+	httpClient   *http.Client
 }
 
-func NewRunnerClient(baseURL string) *RunnerClient {
+func NewRunnerClient(baseURL, runnerSecret string) *RunnerClient {
 	return &RunnerClient{
-		baseURL: baseURL,
+		baseURL:      baseURL,
+		runnerSecret: runnerSecret,
 		httpClient: &http.Client{
 			Timeout: 10 * time.Second,
 		},
@@ -44,6 +47,7 @@ func (c *RunnerClient) DispatchJob(ctx context.Context, payload DispatchJobPaylo
 		return fmt.Errorf("runner client: request: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-Runner-Secret", c.runnerSecret)
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {

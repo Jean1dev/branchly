@@ -1,2 +1,4 @@
 branchly-api/.env
 branchly-api/cmd/api/.env
+branchly-runner/.env
+branchly-runner/cmd/runner/.env
