@@ -1,11 +1,11 @@
 "use client";
 
 import { Separator } from "@/components/ui/separator";
-import { useMockAuth } from "@/lib/mock-auth";
 import { ChevronDown, LogOut, User } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { signOut, useSession } from "next-auth/react";
 import { useEffect, useRef, useState } from "react";
 import { ThemeToggle } from "./theme-toggle";
 
@@ -17,9 +17,16 @@ const links = [
 
 export function NavbarApp() {
   const pathname = usePathname();
-  const { user } = useMockAuth();
+  const { data: session, status } = useSession();
   const [open, setOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement | null>(null);
+
+  const name = session?.user?.name ?? "User";
+  const email = session?.user?.email ?? "";
+  const avatarSeed = encodeURIComponent(name);
+  const avatarSrc =
+    session?.user?.image ??
+    `https://api.dicebear.com/7.x/initials/svg?seed=${avatarSeed}`;
 
   useEffect(() => {
     function onDoc(e: MouseEvent) {
@@ -75,13 +82,18 @@ export function NavbarApp() {
               aria-label="User menu"
               onClick={() => setOpen((o) => !o)}
             >
-              <Image
-                src={user.avatar}
-                alt=""
-                width={32}
-                height={32}
-                className="rounded-full"
-              />
+              {status === "loading" ? (
+                <span className="h-8 w-8 shrink-0 rounded-full bg-gray-200 dark:bg-gray-800" />
+              ) : (
+                <Image
+                  src={avatarSrc}
+                  alt=""
+                  width={32}
+                  height={32}
+                  className="rounded-full"
+                  unoptimized={avatarSrc.includes("dicebear.com")}
+                />
+              )}
               <ChevronDown className="hidden h-4 w-4 text-gray-500 sm:block" />
             </button>
             {open ? (
@@ -90,9 +102,9 @@ export function NavbarApp() {
                 role="menu"
               >
                 <div className="px-3 py-2">
-                  <p className="truncate text-sm font-medium">{user.name}</p>
+                  <p className="truncate text-sm font-medium">{name}</p>
                   <p className="truncate text-xs text-gray-500 dark:text-gray-400">
-                    {user.email}
+                    {email}
                   </p>
                 </div>
                 <Separator className="my-1" />
@@ -109,7 +121,10 @@ export function NavbarApp() {
                   type="button"
                   className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-gray-100 dark:hover:bg-gray-900"
                   role="menuitem"
-                  onClick={() => setOpen(false)}
+                  onClick={() => {
+                    setOpen(false);
+                    void signOut({ callbackUrl: "/login" });
+                  }}
                 >
                   <LogOut className="h-4 w-4" />
                   Sign out

@@ -2,21 +2,42 @@ import { EmptyState } from "@/components/features/empty-state";
 import { JobCard } from "@/components/features/job-card";
 import { PageHeader } from "@/components/layout/page-header";
 import { Button } from "@/components/ui/button";
+import { apiFetch } from "@/lib/api-client";
 import {
-  getJobsByRepositoryId,
-  getRepositoryById,
-} from "@/lib/mock-data";
-import { delay } from "@/lib/utils";
+  jobRepoNameMap,
+  mapJob,
+  mapRepository,
+  unwrapApiData,
+  type ApiJob,
+  type ApiRepository,
+} from "@/lib/map-api";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
 export async function RepoDetailContent({ id }: { id: string }) {
-  await delay(300);
-  const repo = getRepositoryById(id);
-  if (!repo) {
+  const [reposRes, jobsRes] = await Promise.all([
+    apiFetch("/repositories"),
+    apiFetch(`/jobs?repository_id=${encodeURIComponent(id)}`),
+  ]);
+
+  if (!reposRes.ok) {
     notFound();
   }
-  const jobs = getJobsByRepositoryId(repo.id);
+
+  const reposParsed = unwrapApiData<ApiRepository[]>(await reposRes.json());
+  const reposRaw = Array.isArray(reposParsed) ? reposParsed : [];
+  const repoRaw = reposRaw.find((r) => r.id === id);
+  if (!repoRaw) {
+    notFound();
+  }
+
+  const repo = mapRepository(repoRaw);
+  const jobsParsed = jobsRes.ok
+    ? unwrapApiData<ApiJob[]>(await jobsRes.json())
+    : [];
+  const jobsRaw: ApiJob[] = Array.isArray(jobsParsed) ? jobsParsed : [];
+  const names = jobRepoNameMap(reposRaw);
+  const jobs = jobsRaw.map((j) => mapJob(j, names[j.repository_id]));
 
   return (
     <>

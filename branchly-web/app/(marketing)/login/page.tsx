@@ -1,5 +1,4 @@
-import { GitHubMark } from "@/components/icons/github-mark";
-import { Button } from "@/components/ui/button";
+import { GitHubSignInButton } from "@/components/features/github-sign-in-button";
 import { Card } from "@/components/ui/card";
 import Link from "next/link";
 
@@ -19,10 +18,7 @@ export default function LoginPage() {
         <p className="mt-2 text-center text-sm text-gray-500 dark:text-gray-400">
           Sign in with your GitHub account to continue
         </p>
-        <Button className="mt-8 w-full gap-2" size="lg" href="/dashboard">
-          <GitHubMark className="h-5 w-5" />
-          Continue with GitHub
-        </Button>
+        <GitHubSignInButton />
         <p className="mt-6 text-center text-xs text-gray-500 dark:text-gray-400">
           By signing in you agree to our Terms of Service
         </p>

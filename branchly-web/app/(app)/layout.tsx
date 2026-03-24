@@ -3,6 +3,8 @@ import { PageLayout } from "@/components/layout/page-layout";
 import { Sidebar } from "@/components/layout/sidebar";
 import type { ReactNode } from "react";
 
+export const dynamic = "force-dynamic";
+
 export default function AppGroupLayout({ children }: { children: ReactNode }) {
   return (
     <div className="min-h-screen bg-background">

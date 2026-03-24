@@ -5,7 +5,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Overview
 
 Branchly is a full-stack job automation platform integrated with GitHub. It consists of three services:
-- **branchly-api** — Go backend (Gin + MongoDB + GitHub OAuth2)
+- **branchly-api** — Go backend (Gin + MongoDB; GitHub OAuth lives in branchly-web via NextAuth)
 - **branchly-runner** — Go job execution service (stub, port 8081)
 - **branchly-web** — Next.js 16 frontend (React 19, TypeScript, Tailwind CSS)
 
@@ -39,10 +39,11 @@ go test ./internal/...    # Run tests in a specific package
 
 ### Environment Setup
 Copy `branchly-api/.env.example` to `branchly-api/.env` and fill in:
-- `GITHUB_CLIENT_ID` / `GITHUB_CLIENT_SECRET` — GitHub OAuth App credentials
 - `JWT_SECRET` — random secret for JWT signing
 - `ENCRYPTION_KEY` — 32-byte key (hex or raw) for AES-256-GCM token encryption
-- `INTERNAL_API_SECRET` — shared secret for runner → API callbacks
+- `INTERNAL_API_SECRET` — shared secret for Next.js server (`/internal/auth/upsert`) and runner → API callbacks
+
+GitHub OAuth App credentials (`GITHUB_CLIENT_ID` / `GITHUB_CLIENT_SECRET`) belong in **branchly-web** (NextAuth), not in the API.
 
 ## Architecture
 
@@ -64,10 +65,11 @@ Dependency flow: `handler → service → repository → MongoDB`
 
 ### API Routes
 - `GET /health`
-- `GET /auth/github`, `GET /auth/github/callback`, `GET /auth/me`, `POST /auth/logout`
+- `GET /auth/me`, `POST /auth/logout` (JWT Bearer; used via Next.js proxy)
 - `GET|POST /repositories`, `DELETE /repositories/:id`, `GET /repositories/github`
 - `GET|POST /jobs`, `GET /jobs/:id`, `GET /jobs/:id/logs` (SSE)
-- `POST /internal/jobs/:id/status`, `POST /internal/jobs/:id/logs` (runner callbacks, protected by `INTERNAL_API_SECRET`)
+- `POST /internal/auth/upsert` (NextAuth sign-in, `X-Internal-Secret`)
+- `POST /internal/jobs/:id/status`, `POST /internal/jobs/:id/logs` (runner callbacks, `X-Internal-Secret`)
 
 ### branchly-runner
 Stub HTTP server on port 8081. Accepts `POST /jobs`, returns 202. Intended for GitHub Actions / CI integration later.
@@ -84,16 +86,16 @@ components/
   providers/      React context providers
   skeletons/      Loading skeleton components
 lib/
-  mock-auth.tsx   Auth mock utilities (development)
-  mock-data.ts    Fake data for development/UI testing
+  auth.ts         NextAuth options
+  mock-data.ts    Fake data for development/UI testing (optional)
   utils.ts        Utility helpers
 types/index.ts    Shared TypeScript types
 ```
 
 ### Data Flow
-1. **Auth:** Frontend → `/auth/github` → GitHub OAuth → JWT cookie
-2. **Jobs:** Frontend creates job → API saves to MongoDB → dispatches to Runner → Runner calls back via internal API → Frontend streams logs via SSE (`/jobs/:id/logs`)
-3. **Repositories:** API fetches from GitHub using encrypted stored token
+1. **Auth:** Browser → Next.js (NextAuth + GitHub) → `POST /internal/auth/upsert` on API → API JWT stored in NextAuth JWT; browser calls only Next.js `/api/*` proxy
+2. **Jobs:** Frontend → Next.js proxy → API → MongoDB → Runner → internal callbacks → SSE via proxy (`/api/jobs/:id/logs`)
+3. **Repositories:** API fetches from GitHub using the user’s encrypted token (obtained at sign-in)
 
 ### MongoDB Collections
 - `users` — unique on `(provider, provider_id)`, GitHub tokens encrypted with AES-256-GCM

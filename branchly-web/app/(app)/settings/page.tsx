@@ -3,13 +3,38 @@ import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { PageHeader } from "@/components/layout/page-header";
-import { mockUser } from "@/lib/mock-data";
-import { delay } from "@/lib/utils";
-import { Suspense } from "react";
+import { authOptions } from "@/lib/auth";
 import { Skeleton } from "@/components/skeletons/skeleton";
+import type { User } from "@/types";
+import { getServerSession } from "next-auth";
+import type { Session } from "next-auth";
+import { Suspense } from "react";
+
+function sessionToUser(session: Session): User {
+  const email = session.user?.email ?? "";
+  const githubUsername =
+    session.githubLogin ??
+    (email.includes("@") ? (email.split("@")[0]?.replace(/^\d+\+/, "") ?? "github") : "github");
+  return {
+    id: session.userId,
+    name: session.user?.name ?? "User",
+    email,
+    avatar: session.user?.image ?? "",
+    githubUsername,
+  };
+}
 
 async function SettingsBody() {
-  await delay(320);
+  const session = await getServerSession(authOptions);
+  if (!session?.userId) {
+    return (
+      <p className="text-sm text-gray-500 dark:text-gray-400">
+        Could not load profile.
+      </p>
+    );
+  }
+  const user = sessionToUser(session);
+
   return (
     <div className="max-w-2xl space-y-10">
       <section className="space-y-4">
@@ -19,21 +44,21 @@ async function SettingsBody() {
             <p className="text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">
               Name
             </p>
-            <p className="mt-1 text-sm">{mockUser.name}</p>
+            <p className="mt-1 text-sm">{user.name}</p>
           </div>
           <Separator />
           <div>
             <p className="text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">
               Email
             </p>
-            <p className="mt-1 text-sm">{mockUser.email}</p>
+            <p className="mt-1 text-sm">{user.email}</p>
           </div>
           <Separator />
           <div>
             <p className="text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">
               GitHub username
             </p>
-            <p className="mt-1 font-mono text-sm">{mockUser.githubUsername}</p>
+            <p className="mt-1 font-mono text-sm">{user.githubUsername}</p>
           </div>
         </Card>
       </section>
@@ -43,7 +68,7 @@ async function SettingsBody() {
           <div>
             <p className="font-medium">GitHub</p>
             <p className="text-sm text-gray-500 dark:text-gray-400">
-              @{mockUser.githubUsername}
+              @{user.githubUsername}
             </p>
           </div>
           <Badge variant="success">Connected</Badge>

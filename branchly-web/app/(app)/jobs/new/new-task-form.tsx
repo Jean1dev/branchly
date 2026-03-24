@@ -1,24 +1,44 @@
 "use client";
 
 import { PageHeader } from "@/components/layout/page-header";
+import { unwrapApiData } from "@/lib/map-api";
 import { Button } from "@/components/ui/button";
-import { mockRepositories } from "@/lib/mock-data";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+
+type RepoRow = { id: string; full_name: string };
 
 export function NewTaskForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const defaultRepoId = searchParams.get("repositoryId") ?? "";
-  const validDefault = useMemo(
-    () => mockRepositories.some((r) => r.id === defaultRepoId),
-    [defaultRepoId]
-  );
-  const [repositoryId, setRepositoryId] = useState(
-    validDefault ? defaultRepoId : mockRepositories[0]?.id ?? ""
-  );
+  const [repos, setRepos] = useState<RepoRow[]>([]);
+  const [selectedId, setSelectedId] = useState("");
   const [prompt, setPrompt] = useState("");
-  const canSubmit = repositoryId.length > 0 && prompt.trim().length > 0;
+  const [submitting, setSubmitting] = useState(false);
+
+  useEffect(() => {
+    void fetch("/api/repositories")
+      .then(async (r) => {
+        if (!r.ok) return [] as RepoRow[];
+        return unwrapApiData<RepoRow[]>(await r.json());
+      })
+      .then((data) => setRepos(Array.isArray(data) ? data : []))
+      .catch(() => setRepos([]));
+  }, []);
+
+  const repositoryId = useMemo(() => {
+    if (selectedId && repos.some((r) => r.id === selectedId)) {
+      return selectedId;
+    }
+    if (defaultRepoId && repos.some((r) => r.id === defaultRepoId)) {
+      return defaultRepoId;
+    }
+    return repos[0]?.id ?? "";
+  }, [repos, selectedId, defaultRepoId]);
+
+  const canSubmit =
+    repositoryId.length > 0 && prompt.trim().length > 0 && !submitting;
 
   return (
     <>
@@ -28,7 +48,21 @@ export function NewTaskForm() {
         onSubmit={(e) => {
           e.preventDefault();
           if (!canSubmit) return;
-          router.push("/jobs/job_02");
+          setSubmitting(true);
+          void fetch("/api/jobs", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              repository_id: repositoryId,
+              prompt: prompt.trim(),
+            }),
+          })
+            .then(async (res) => {
+              if (!res.ok) return;
+              const j = unwrapApiData<{ id: string }>(await res.json());
+              router.push(`/jobs/${j.id}`);
+            })
+            .finally(() => setSubmitting(false));
         }}
       >
         <div className="space-y-2">
@@ -39,13 +73,18 @@ export function NewTaskForm() {
             id="repository"
             className="flex h-9 w-full max-w-md rounded-md border border-gray-200 bg-transparent px-3 text-sm transition-colors duration-150 focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-black/10 dark:border-gray-800 dark:focus-visible:ring-white/[0.12]"
             value={repositoryId}
-            onChange={(e) => setRepositoryId(e.target.value)}
+            onChange={(e) => setSelectedId(e.target.value)}
+            disabled={repos.length === 0}
           >
-            {mockRepositories.map((r) => (
-              <option key={r.id} value={r.id}>
-                {r.fullName}
-              </option>
-            ))}
+            {repos.length === 0 ? (
+              <option value="">No repositories connected</option>
+            ) : (
+              repos.map((r) => (
+                <option key={r.id} value={r.id}>
+                  {r.full_name}
+                </option>
+              ))
+            )}
           </select>
         </div>
         <div className="space-y-2">

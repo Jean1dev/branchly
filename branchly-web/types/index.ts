@@ -1,4 +1,4 @@
-export type JobStatus = "completed" | "running" | "failed";
+export type JobStatus = "pending" | "running" | "completed" | "failed";
 
 export type JobLogLevel = "info" | "success" | "warning" | "error";
 

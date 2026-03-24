@@ -1,4 +1,4 @@
-import { MockAuthProvider } from "@/lib/mock-auth";
+import { AuthSessionProvider } from "@/components/providers/session-provider";
 import { ThemeProvider } from "@/components/providers/theme-provider";
 import { GeistMono } from "geist/font/mono";
 import { GeistSans } from "geist/font/sans";
@@ -21,7 +21,7 @@ export default function RootLayout({
         className={`${GeistSans.variable} ${GeistMono.variable} ${GeistSans.className}`}
       >
         <ThemeProvider>
-          <MockAuthProvider>{children}</MockAuthProvider>
+          <AuthSessionProvider>{children}</AuthSessionProvider>
         </ThemeProvider>
       </body>
     </html>

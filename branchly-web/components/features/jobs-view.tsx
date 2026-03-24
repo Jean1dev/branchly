@@ -4,9 +4,8 @@ import { StatusBadge } from "@/components/features/status-badge";
 import { EmptyState } from "@/components/features/empty-state";
 import { PageHeader } from "@/components/layout/page-header";
 import { Button } from "@/components/ui/button";
-import { mockJobs } from "@/lib/mock-data";
 import { formatDurationMs, truncate } from "@/lib/utils";
-import type { JobStatus } from "@/types";
+import type { Job, JobStatus } from "@/types";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useMemo } from "react";
@@ -20,7 +19,11 @@ const tabs: { id: "all" | JobStatus; label: string }[] = [
   { id: "failed", label: "Failed" },
 ];
 
-export function JobsView() {
+type JobsViewProps = {
+  jobs: Job[];
+};
+
+export function JobsView({ jobs }: JobsViewProps) {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -32,9 +35,9 @@ export function JobsView() {
     : "all";
 
   const filtered = useMemo(() => {
-    if (activeTab === "all") return mockJobs;
-    return mockJobs.filter((j) => j.status === activeTab);
-  }, [activeTab]);
+    if (activeTab === "all") return jobs;
+    return jobs.filter((j) => j.status === activeTab);
+  }, [jobs, activeTab]);
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
   const page = Math.min(Math.max(1, pageParam), totalPages);

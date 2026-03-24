@@ -7,6 +7,11 @@ const nextConfig = {
         hostname: "api.dicebear.com",
         pathname: "/**",
       },
+      {
+        protocol: "https",
+        hostname: "avatars.githubusercontent.com",
+        pathname: "/**",
+      },
     ],
   },
 };

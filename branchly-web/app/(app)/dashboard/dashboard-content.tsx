@@ -3,8 +3,16 @@ import { StatusBadge } from "@/components/features/status-badge";
 import { EmptyState } from "@/components/features/empty-state";
 import { PageHeader } from "@/components/layout/page-header";
 import { Card } from "@/components/ui/card";
-import { mockJobs, mockRepositories } from "@/lib/mock-data";
-import { delay, formatDate, truncate } from "@/lib/utils";
+import { apiFetch } from "@/lib/api-client";
+import {
+  jobRepoNameMap,
+  mapJob,
+  mapRepository,
+  unwrapApiData,
+  type ApiJob,
+  type ApiRepository,
+} from "@/lib/map-api";
+import { formatDate, truncate } from "@/lib/utils";
 import type { Job } from "@/types";
 import { FolderGit2 } from "lucide-react";
 import Link from "next/link";
@@ -16,7 +24,25 @@ function sortByCreatedDesc(jobs: Job[]): Job[] {
 }
 
 export async function DashboardContent() {
-  await delay(450);
+  const [jobsRes, reposRes] = await Promise.all([
+    apiFetch("/jobs"),
+    apiFetch("/repositories"),
+  ]);
+
+  const jobsParsed = jobsRes.ok
+    ? unwrapApiData<ApiJob[]>(await jobsRes.json())
+    : [];
+  const reposParsed = reposRes.ok
+    ? unwrapApiData<ApiRepository[]>(await reposRes.json())
+    : [];
+  const jobsRaw: ApiJob[] = Array.isArray(jobsParsed) ? jobsParsed : [];
+  const reposRaw: ApiRepository[] = Array.isArray(reposParsed)
+    ? reposParsed
+    : [];
+  const names = jobRepoNameMap(reposRaw);
+  const mockJobs = jobsRaw.map((j) => mapJob(j, names[j.repository_id]));
+  const mockRepositories = reposRaw.map(mapRepository);
+
   const total = mockJobs.length;
   const completed = mockJobs.filter((j) => j.status === "completed").length;
   const failed = mockJobs.filter((j) => j.status === "failed").length;

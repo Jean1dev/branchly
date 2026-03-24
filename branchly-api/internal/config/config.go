@@ -17,10 +17,6 @@ type Config struct {
 	MongoURI      string
 	MongoDatabase string
 
-	GitHubClientID     string
-	GitHubClientSecret string
-	GitHubRedirectURI  string
-
 	JWTSecret  []byte
 	JWTTTLDays int
 
@@ -77,13 +73,6 @@ func Load() (*Config, error) {
 		return nil, fmt.Errorf("config: MONGODB_DATABASE is required")
 	}
 
-	clientID := strings.TrimSpace(os.Getenv("GITHUB_CLIENT_ID"))
-	clientSecret := strings.TrimSpace(os.Getenv("GITHUB_CLIENT_SECRET"))
-	redirectURI := strings.TrimSpace(os.Getenv("GITHUB_REDIRECT_URI"))
-	if clientID == "" || clientSecret == "" || redirectURI == "" {
-		return nil, fmt.Errorf("config: GITHUB_CLIENT_ID, GITHUB_CLIENT_SECRET and GITHUB_REDIRECT_URI are required")
-	}
-
 	runnerURL := strings.TrimSpace(os.Getenv("RUNNER_URL"))
 	if runnerURL == "" {
 		return nil, fmt.Errorf("config: RUNNER_URL is required")
@@ -115,9 +104,6 @@ func Load() (*Config, error) {
 		Port:                port,
 		MongoURI:            mongoURI,
 		MongoDatabase:       dbName,
-		GitHubClientID:      clientID,
-		GitHubClientSecret:  clientSecret,
-		GitHubRedirectURI:   redirectURI,
 		JWTSecret:           []byte(jwtSecret),
 		JWTTTLDays:          ttlDays,
 		EncryptionKey:       encKey,

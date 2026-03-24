@@ -2,17 +2,36 @@ import { JobLogPanel } from "@/components/features/job-log-panel";
 import { StatusBadge } from "@/components/features/status-badge";
 import { Card } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
-import { getJobById, mockJobLogs } from "@/lib/mock-data";
-import { delay, formatDate, truncate } from "@/lib/utils";
+import { apiFetch } from "@/lib/api-client";
+import {
+  mapJob,
+  mapJobLog,
+  unwrapApiData,
+  type ApiJob,
+} from "@/lib/map-api";
+import { formatDate, truncate } from "@/lib/utils";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
 export async function JobDetailContent({ id }: { id: string }) {
-  await delay(280);
-  const job = getJobById(id);
-  if (!job) {
+  const res = await apiFetch(`/jobs/${encodeURIComponent(id)}`);
+  if (res.status === 404) {
     notFound();
   }
+  if (!res.ok) {
+    notFound();
+  }
+  const raw = unwrapApiData<ApiJob>(await res.json());
+  const repoRes = await apiFetch("/repositories");
+  const reposParsed = repoRes.ok
+    ? unwrapApiData<Array<{ id: string; full_name: string }>>(
+        await repoRes.json()
+      )
+    : [];
+  const repos = Array.isArray(reposParsed) ? reposParsed : [];
+  const repoName = repos.find((r) => r.id === raw.repository_id)?.full_name;
+  const job = mapJob(raw, repoName);
+  const logLines = (raw.logs ?? []).map(mapJobLog);
 
   return (
     <>
@@ -43,7 +62,7 @@ export async function JobDetailContent({ id }: { id: string }) {
           <h2 className="mb-3 text-sm font-medium text-gray-500 dark:text-gray-400">
             Log output
           </h2>
-          <JobLogPanel lines={mockJobLogs} status={job.status} />
+          <JobLogPanel jobId={job.id} lines={logLines} status={job.status} />
         </div>
         <div className="lg:col-span-2">
           <Card className="space-y-4 p-6">

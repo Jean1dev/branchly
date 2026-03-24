@@ -1,16 +1,18 @@
 "use client";
 
 import { Button } from "@/components/ui/button";
-import { useMockAuth } from "@/lib/mock-auth";
 import { ChevronRight } from "lucide-react";
 import Link from "next/link";
+import { useSession } from "next-auth/react";
 
 type NavbarMarketingProps = {
   transparent?: boolean;
 };
 
 export function NavbarMarketing({ transparent }: NavbarMarketingProps) {
-  const { isAuthenticated } = useMockAuth();
+  const { status } = useSession();
+  const isAuthenticated = status === "authenticated";
+
   return (
     <header
       className={

@@ -54,33 +54,25 @@ func main() {
 	runner := infra.NewRunnerClient(cfg.RunnerURL)
 	jobSvc := service.NewJobService(cfg, jobRepo, repoRepo, userRepo, runner)
 
-	authH := handler.NewAuthHandler(cfg, authSvc)
 	repoH := handler.NewRepositoryHandler(repoSvc)
 	jobH := handler.NewJobHandler(jobSvc)
 	sseH := handler.NewSSEHandler(jobSvc)
 	internalH := handler.NewInternalHandler(jobSvc)
+	internalAuthH := handler.NewInternalAuthHandler(authSvc)
 
 	gin.SetMode(gin.ReleaseMode)
 	r := gin.New()
 	r.Use(gin.Recovery())
+	r.Use(middleware.RequestLog())
 	r.Use(middleware.CORS(cfg.AllowedOrigins))
 
 	r.GET("/health", func(c *gin.Context) {
 		respond.JSONOK(c, gin.H{"status": "ok"})
 	})
 
-	auth := r.Group("/auth")
-	{
-		auth.GET("/github", authH.GitHubStart)
-		auth.GET("/github/callback", authH.GitHubCallback)
-	}
-
 	protected := r.Group("")
 	protected.Use(middleware.AuthJWT(authSvc))
 	{
-		protected.GET("/auth/me", authH.Me)
-		protected.POST("/auth/logout", authH.Logout)
-
 		protected.GET("/repositories", repoH.List)
 		protected.POST("/repositories", repoH.Connect)
 		protected.DELETE("/repositories/:id", repoH.Delete)
@@ -95,6 +87,7 @@ func main() {
 	internal := r.Group("/internal")
 	internal.Use(middleware.InternalAPI(cfg.InternalSecret))
 	{
+		internal.POST("/auth/upsert", internalAuthH.Upsert)
 		internal.POST("/jobs/:id/status", internalH.UpdateStatus)
 		internal.POST("/jobs/:id/logs", internalH.AppendLog)
 	}
