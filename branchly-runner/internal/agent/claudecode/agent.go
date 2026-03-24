@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"os"
 	"os/exec"
 	"strings"
 	"sync"
@@ -23,8 +24,10 @@ func (a *Agent) Run(ctx context.Context, input domain.AgentInput) (string, error
 	if err != nil {
 		return "", fmt.Errorf("claude code cli not found in PATH: %w", err)
 	}
-	cmd := exec.CommandContext(ctx, claudePath, "--dangerously-skip-permissions", "--print", input.Prompt)
+	cmd := exec.CommandContext(ctx, claudePath, "--permission-mode", "acceptEdits", "--print", input.Prompt)
 	cmd.Dir = input.WorkDir
+	cmd.Stdin = strings.NewReader("")
+	cmd.Env = append(os.Environ(), "CI=true", "TERM=dumb")
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
 		return "", fmt.Errorf("stdout pipe: %w", err)
@@ -46,6 +49,18 @@ func (a *Agent) Run(ctx context.Context, input domain.AgentInput) (string, error
 			lineMu.Unlock()
 		}
 	}
+	var stderrLines []string
+	var stderrMu sync.Mutex
+	const stderrCap = 40
+	pushStderr := func(line string) {
+		stderrMu.Lock()
+		defer stderrMu.Unlock()
+		stderrLines = append(stderrLines, line)
+		if len(stderrLines) > stderrCap {
+			stderrLines = stderrLines[len(stderrLines)-stderrCap:]
+		}
+	}
+
 	var wg sync.WaitGroup
 	wg.Add(2)
 	go func() {
@@ -60,6 +75,7 @@ func (a *Agent) Run(ctx context.Context, input domain.AgentInput) (string, error
 	go func() {
 		defer wg.Done()
 		scanLines(stderr, func(line string) {
+			pushStderr(line)
 			if input.OnLog != nil {
 				input.OnLog(domain.LogLevelError, line)
 			}
@@ -70,10 +86,16 @@ func (a *Agent) Run(ctx context.Context, input domain.AgentInput) (string, error
 		lineMu.Lock()
 		s := lastLine
 		lineMu.Unlock()
-		if s != "" {
-			return s, fmt.Errorf("claude exited: %w", err)
+		stderrMu.Lock()
+		tail := strings.TrimSpace(strings.Join(stderrLines, "\n"))
+		stderrMu.Unlock()
+		if tail == "" {
+			tail = "(no stderr; check ANTHROPIC_API_KEY is set in the runner environment)"
 		}
-		return "", fmt.Errorf("claude exited: %w", err)
+		if s != "" {
+			return s, fmt.Errorf("claude exited: %w — %s", err, tail)
+		}
+		return "", fmt.Errorf("claude exited: %w — %s", err, tail)
 	}
 	lineMu.Lock()
 	defer lineMu.Unlock()

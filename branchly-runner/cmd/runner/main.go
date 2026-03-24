@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -27,6 +28,10 @@ func main() {
 	if err != nil {
 		slog.Error("config load failed", "error", err)
 		os.Exit(1)
+	}
+
+	if strings.TrimSpace(os.Getenv("ANTHROPIC_API_KEY")) == "" {
+		slog.Warn("ANTHROPIC_API_KEY is empty; Claude Code will fail until the runner process receives a valid API key (e.g. branchly-runner/.env or compose environment)")
 	}
 
 	ctx := context.Background()
