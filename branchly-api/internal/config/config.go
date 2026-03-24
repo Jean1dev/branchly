@@ -27,9 +27,6 @@ type Config struct {
 	FrontendURL    string
 	AllowedOrigins []string
 	InternalSecret string
-
-	CookieSecure        bool
-	SessionCookieDomain string
 }
 
 func Load() (*Config, error) {
@@ -97,9 +94,6 @@ func Load() (*Config, error) {
 		return nil, fmt.Errorf("config: INTERNAL_API_SECRET is required")
 	}
 
-	cookieSecure := parseBoolEnv(os.Getenv("COOKIE_SECURE"))
-	sessionCookieDomain := strings.TrimSpace(os.Getenv("SESSION_COOKIE_DOMAIN"))
-
 	return &Config{
 		Port:                port,
 		MongoURI:            mongoURI,
@@ -109,20 +103,9 @@ func Load() (*Config, error) {
 		EncryptionKey:       encKey,
 		RunnerURL:           strings.TrimSuffix(runnerURL, "/"),
 		FrontendURL:         strings.TrimSuffix(frontend, "/"),
-		AllowedOrigins:      origins,
-		InternalSecret:      internalSecret,
-		CookieSecure:        cookieSecure,
-		SessionCookieDomain: sessionCookieDomain,
+		AllowedOrigins: origins,
+		InternalSecret: internalSecret,
 	}, nil
-}
-
-func parseBoolEnv(s string) bool {
-	switch strings.ToLower(strings.TrimSpace(s)) {
-	case "1", "true", "yes", "on":
-		return true
-	default:
-		return false
-	}
 }
 
 func parseEncryptionKey(s string) ([]byte, error) {
