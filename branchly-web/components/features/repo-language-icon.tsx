@@ -132,6 +132,8 @@ function slugForLanguage(lang: string | undefined | null): string | null {
   return null;
 }
 
+const SOFTEN_ON_DARK_SLUGS = new Set(["javascript"]);
+
 export type RepoLanguageIconProps = {
   language?: string | null;
   className?: string;
@@ -169,11 +171,13 @@ export function RepoLanguageIcon({
   }
 
   const src = `https://cdn.simpleicons.org/${slug}`;
+  const softenDark = SOFTEN_ON_DARK_SLUGS.has(slug);
 
   return (
     <span
       className={cn(
-        "flex shrink-0 items-center justify-center overflow-hidden border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-950",
+        "flex shrink-0 items-center justify-center overflow-hidden border border-gray-200 bg-white dark:border-neutral-500 dark:bg-neutral-200",
+        softenDark && "dark:border-zinc-700 dark:bg-zinc-900",
         box,
         className
       )}
@@ -185,7 +189,12 @@ export function RepoLanguageIcon({
         alt=""
         width={24}
         height={24}
-        className={cn(img, "object-contain")}
+        className={cn(
+          img,
+          "object-contain",
+          softenDark &&
+            "dark:brightness-[0.72] dark:saturate-[0.72] dark:contrast-[1.05]"
+        )}
         unoptimized
         onError={() => setIconFailed(true)}
       />
