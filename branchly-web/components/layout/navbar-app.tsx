@@ -4,19 +4,11 @@ import { Separator } from "@/components/ui/separator";
 import { ChevronDown, LogOut, User } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
 import { signOut, useSession } from "next-auth/react";
 import { useEffect, useRef, useState } from "react";
 import { ThemeToggle } from "./theme-toggle";
 
-const links = [
-  { href: "/dashboard", label: "Dashboard" },
-  { href: "/repositories", label: "Repositories" },
-  { href: "/jobs", label: "Jobs" },
-];
-
 export function NavbarApp() {
-  const pathname = usePathname();
   const { data: session, status } = useSession();
   const [open, setOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement | null>(null);
@@ -39,37 +31,13 @@ export function NavbarApp() {
   return (
     <header className="fixed left-0 right-0 top-0 z-40 h-14 border-b border-gray-200 bg-background dark:border-gray-800">
       <div className="flex h-full items-center justify-between gap-4 px-4 lg:px-6">
-        <div className="flex min-w-0 flex-1 items-center gap-6">
+        <div className="flex min-w-0 flex-1 items-center">
           <Link
             href="/dashboard"
             className="shrink-0 font-mono text-base font-semibold tracking-tight"
           >
             branchly
           </Link>
-          <nav
-            className="hidden items-center gap-1 md:flex"
-            aria-label="Primary"
-          >
-            {links.map(({ href, label }) => {
-              const active =
-                href === "/dashboard"
-                  ? pathname === "/dashboard"
-                  : pathname.startsWith(href);
-              return (
-                <Link
-                  key={href}
-                  href={href}
-                  className={
-                    active
-                      ? "rounded-md bg-gray-100 px-3 py-1.5 text-sm font-medium text-foreground dark:bg-gray-900"
-                      : "rounded-md px-3 py-1.5 text-sm font-medium text-gray-500 transition-colors duration-150 hover:text-foreground dark:text-gray-400"
-                  }
-                >
-                  {label}
-                </Link>
-              );
-            })}
-          </nav>
         </div>
         <div className="flex shrink-0 items-center gap-2">
           <ThemeToggle />

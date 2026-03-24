@@ -22,7 +22,7 @@ func NewRepositoryHandler(svc *service.RepositoryService) *RepositoryHandler {
 type connectRepoRequest struct {
 	GithubRepoID  int64  `json:"github_repo_id" binding:"required"`
 	FullName      string `json:"full_name" binding:"required"`
-	DefaultBranch string `json:"default_branch" binding:"required"`
+	DefaultBranch string `json:"default_branch"`
 	Language      string `json:"language"`
 }
 

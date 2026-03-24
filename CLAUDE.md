@@ -87,7 +87,6 @@ components/
   skeletons/      Loading skeleton components
 lib/
   auth.ts         NextAuth options
-  mock-data.ts    Fake data for development/UI testing (optional)
   utils.ts        Utility helpers
 types/index.ts    Shared TypeScript types
 ```

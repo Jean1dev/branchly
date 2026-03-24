@@ -12,6 +12,16 @@ export function unwrapApiData<T>(json: unknown): T {
   return json as T;
 }
 
+export function parseApiErrorMessage(json: unknown, status: number): string {
+  if (json !== null && typeof json === "object" && "error" in json) {
+    const err = (json as { error?: { message?: string } }).error;
+    if (typeof err?.message === "string" && err.message.length > 0) {
+      return err.message;
+    }
+  }
+  return `Request failed (${status})`;
+}
+
 export type ApiRepository = {
   id: string;
   full_name: string;

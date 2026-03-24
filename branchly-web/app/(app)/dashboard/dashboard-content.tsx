@@ -40,14 +40,14 @@ export async function DashboardContent() {
     ? reposParsed
     : [];
   const names = jobRepoNameMap(reposRaw);
-  const mockJobs = jobsRaw.map((j) => mapJob(j, names[j.repository_id]));
-  const mockRepositories = reposRaw.map(mapRepository);
+  const jobs = jobsRaw.map((j) => mapJob(j, names[j.repository_id]));
+  const repositories = reposRaw.map(mapRepository);
 
-  const total = mockJobs.length;
-  const completed = mockJobs.filter((j) => j.status === "completed").length;
-  const failed = mockJobs.filter((j) => j.status === "failed").length;
-  const repos = mockRepositories.length;
-  const recent = sortByCreatedDesc(mockJobs).slice(0, 5);
+  const total = jobs.length;
+  const completed = jobs.filter((j) => j.status === "completed").length;
+  const failed = jobs.filter((j) => j.status === "failed").length;
+  const repoCount = repositories.length;
+  const recent = sortByCreatedDesc(jobs).slice(0, 5);
 
   return (
     <>
@@ -57,7 +57,7 @@ export async function DashboardContent() {
           { label: "Total Jobs", value: total },
           { label: "Completed", value: completed },
           { label: "Failed", value: failed },
-          { label: "Repositories Connected", value: repos },
+          { label: "Repositories Connected", value: repoCount },
         ].map((m) => (
           <Card key={m.label} className="p-6">
             <p className="text-sm text-gray-500 dark:text-gray-400">{m.label}</p>
@@ -151,7 +151,7 @@ export async function DashboardContent() {
             View all
           </Link>
         </div>
-        {mockRepositories.length === 0 ? (
+        {repositories.length === 0 ? (
           <div className="mt-6">
             <EmptyState
               title="No repositories"
@@ -162,7 +162,7 @@ export async function DashboardContent() {
           </div>
         ) : (
           <ul className="mt-4 space-y-3">
-            {mockRepositories.map((r) => (
+            {repositories.map((r) => (
               <li key={r.id}>
                 <RepoCard repo={r} />
               </li>

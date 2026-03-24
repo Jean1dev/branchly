@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"slices"
+	"strings"
 	"time"
 
 	"github.com/branchly/branchly-api/internal/config"
@@ -59,6 +61,10 @@ type ConnectRepositoryInput struct {
 }
 
 func (s *RepositoryService) Connect(ctx context.Context, userID string, in ConnectRepositoryInput) (*domain.Repository, error) {
+	defaultBranch := strings.TrimSpace(in.DefaultBranch)
+	if defaultBranch == "" {
+		defaultBranch = "main"
+	}
 	existing, err := s.repos.FindByUserAndGithubRepoID(ctx, userID, in.GithubRepoID)
 	if err != nil {
 		return nil, fmt.Errorf("repository service: connect find: %w", err)
@@ -71,7 +77,7 @@ func (s *RepositoryService) Connect(ctx context.Context, userID string, in Conne
 		UserID:        userID,
 		GithubRepoID:  in.GithubRepoID,
 		FullName:      in.FullName,
-		DefaultBranch: in.DefaultBranch,
+		DefaultBranch: defaultBranch,
 		Language:      in.Language,
 		ConnectedAt:   time.Now().UTC(),
 	}
@@ -98,13 +104,18 @@ func (s *RepositoryService) Disconnect(ctx context.Context, userID, repoID strin
 	return nil
 }
 
+type githubRepoPermissions struct {
+	Push bool `json:"push"`
+}
+
 type GitHubRepoListItem struct {
-	ID            int64  `json:"id"`
-	Name          string `json:"name"`
-	FullName      string `json:"full_name"`
-	DefaultBranch string `json:"default_branch"`
-	Language      string `json:"language"`
-	Private       bool   `json:"private"`
+	ID            int64                  `json:"id"`
+	Name          string                 `json:"name"`
+	FullName      string                 `json:"full_name"`
+	DefaultBranch string                 `json:"default_branch"`
+	Language      string                 `json:"language"`
+	Private       bool                   `json:"private"`
+	Permissions   *githubRepoPermissions `json:"permissions"`
 }
 
 func (s *RepositoryService) ListGitHubAvailable(ctx context.Context, userID string) ([]GitHubRepoListItem, error) {
@@ -143,7 +154,30 @@ func (s *RepositoryService) ListGitHubAvailable(ctx context.Context, userID stri
 	if err := json.Unmarshal(body, &out); err != nil {
 		return nil, fmt.Errorf("repository service: decode repos: %w", err)
 	}
-	return out, nil
+
+	connected, err := s.repos.FindByUserID(ctx, userID)
+	if err != nil {
+		return nil, fmt.Errorf("repository service: list connected: %w", err)
+	}
+	already := make(map[int64]struct{}, len(connected))
+	for _, r := range connected {
+		already[r.GithubRepoID] = struct{}{}
+	}
+
+	filtered := make([]GitHubRepoListItem, 0, len(out))
+	for _, item := range out {
+		if _, ok := already[item.ID]; ok {
+			continue
+		}
+		if item.Permissions != nil && !item.Permissions.Push {
+			continue
+		}
+		filtered = append(filtered, item)
+	}
+	slices.SortFunc(filtered, func(a, b GitHubRepoListItem) int {
+		return strings.Compare(strings.ToLower(a.FullName), strings.ToLower(b.FullName))
+	})
+	return filtered, nil
 }
 
 func (s *RepositoryService) GetOwned(ctx context.Context, userID, repoID string) (*domain.Repository, error) {
