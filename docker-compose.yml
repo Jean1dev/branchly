@@ -1,0 +1,45 @@
+services:
+  mongodb:
+    image: mongo:7
+    container_name: branchly-mongodb
+    ports:
+      - "27017:27017"
+    volumes:
+      - branchly-mongo-data:/data/db
+    networks:
+      - branchly-network
+
+  branchly-runner:
+    build:
+      context: ./branchly-runner
+      dockerfile: Dockerfile
+    container_name: branchly-runner
+    ports:
+      - "8081:8081"
+    networks:
+      - branchly-network
+
+  branchly-api:
+    build:
+      context: ./branchly-api
+      dockerfile: Dockerfile
+    container_name: branchly-api
+    ports:
+      - "8080:8080"
+    env_file:
+      - path: ./branchly-api/.env.example
+        required: false
+      - path: ./branchly-api/.env
+        required: false
+    depends_on:
+      - mongodb
+      - branchly-runner
+    networks:
+      - branchly-network
+
+volumes:
+  branchly-mongo-data:
+
+networks:
+  branchly-network:
+    name: branchly-network
