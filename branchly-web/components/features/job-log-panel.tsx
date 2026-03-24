@@ -13,7 +13,7 @@ type JobLogPanelProps = {
 export function JobLogPanel({ jobId, lines, status }: JobLogPanelProps) {
   const live = status === "running" || status === "pending";
   if (live) {
-    return <JobLogsLive jobId={jobId} />;
+    return <JobLogsLive key={jobId} jobId={jobId} initialLines={lines} />;
   }
   return <LogTerminal lines={lines} stream={false} />;
 }

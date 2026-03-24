@@ -7,10 +7,11 @@ import { useEffect, useState } from "react";
 
 type JobLogsLiveProps = {
   jobId: string;
+  initialLines?: JobLog[];
 };
 
-export function JobLogsLive({ jobId }: JobLogsLiveProps) {
-  const [lines, setLines] = useState<JobLog[]>([]);
+export function JobLogsLive({ jobId, initialLines = [] }: JobLogsLiveProps) {
+  const [lines, setLines] = useState<JobLog[]>(initialLines);
 
   useEffect(() => {
     const es = new EventSource(`/api/jobs/${encodeURIComponent(jobId)}/logs`);
