@@ -24,13 +24,12 @@ func NewJobsHandler(secret string, p *pool.Pool, ex *executor.Executor) *JobsHan
 }
 
 type postJobBody struct {
-	JobID           string `json:"job_id" binding:"required"`
-	UserID          string `json:"user_id" binding:"required"`
-	RepositoryName  string `json:"repository_name" binding:"required"`
-	DefaultBranch   string `json:"default_branch"`
-	BranchName      string `json:"branch_name" binding:"required"`
-	Prompt          string `json:"prompt" binding:"required"`
-	EncryptedToken  string `json:"encrypted_token" binding:"required"`
+	JobID          string `json:"job_id" binding:"required"`
+	UserID         string `json:"user_id" binding:"required"`
+	RepositoryName string `json:"repository_name" binding:"required"`
+	DefaultBranch  string `json:"default_branch"`
+	Prompt         string `json:"prompt" binding:"required"`
+	EncryptedToken string `json:"encrypted_token" binding:"required"`
 }
 
 const maxRunnerSecretBytes = 512
@@ -61,13 +60,12 @@ func (h *JobsHandler) PostJob(c *gin.Context) {
 		return
 	}
 	in := executor.RunJobInput{
-		JobID:           strings.TrimSpace(body.JobID),
-		UserID:          strings.TrimSpace(body.UserID),
-		RepositoryName:  strings.TrimSpace(body.RepositoryName),
-		DefaultBranch:   strings.TrimSpace(body.DefaultBranch),
-		BranchName:      strings.TrimSpace(body.BranchName),
-		Prompt:          body.Prompt,
-		EncryptedToken:  body.EncryptedToken,
+		JobID:          strings.TrimSpace(body.JobID),
+		UserID:         strings.TrimSpace(body.UserID),
+		RepositoryName: strings.TrimSpace(body.RepositoryName),
+		DefaultBranch:  strings.TrimSpace(body.DefaultBranch),
+		Prompt:         body.Prompt,
+		EncryptedToken: body.EncryptedToken,
 	}
 	ok := h.pool.TryGo(func() {
 		h.executor.Run(context.Background(), in)
