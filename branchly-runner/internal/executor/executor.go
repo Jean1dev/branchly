@@ -13,6 +13,7 @@ import (
 	"github.com/branchly/branchly-runner/internal/domain"
 	"github.com/branchly/branchly-runner/internal/infra"
 	"github.com/branchly/branchly-runner/internal/repository"
+	"github.com/branchly/branchly-runner/internal/slug"
 	"github.com/go-git/go-git/v5"
 	"github.com/go-git/go-git/v5/config"
 	"github.com/go-git/go-git/v5/plumbing"
@@ -22,13 +23,12 @@ import (
 )
 
 type RunJobInput struct {
-	JobID            string
-	UserID           string
-	RepositoryName   string
-	DefaultBranch    string
-	BranchName       string
-	Prompt           string
-	EncryptedToken   string
+	JobID           string
+	UserID          string
+	RepositoryName  string
+	DefaultBranch   string
+	Prompt          string
+	EncryptedToken  string
 }
 
 type Executor struct {
@@ -152,9 +152,10 @@ func (e *Executor) Run(ctx context.Context, in RunJobInput) {
 		return
 	}
 	slog.Info("job execution started", "job_id", in.JobID, "repository", in.RepositoryName)
+	branchName := slug.GenerateSlug(in.Prompt)
 	token, err := infra.Decrypt(in.EncryptedToken, e.encKey)
 	if err != nil {
-		e.markFailed(in.JobID, in.BranchName, "could not decrypt repository credentials")
+		e.markFailed(in.JobID, branchName, "could not decrypt repository credentials")
 		return
 	}
 	baseBranch := strings.TrimSpace(in.DefaultBranch)
@@ -163,7 +164,7 @@ func (e *Executor) Run(ctx context.Context, in RunJobInput) {
 	}
 	dir, err := jobScratchDir(e.workDir, in.JobID)
 	if err != nil {
-		e.markFailed(in.JobID, in.BranchName, fmt.Sprintf("temp dir: %v", err))
+		e.markFailed(in.JobID, branchName, fmt.Sprintf("temp dir: %v", err))
 		return
 	}
 	defer func() { _ = os.RemoveAll(dir) }()
@@ -182,26 +183,26 @@ func (e *Executor) Run(ctx context.Context, in RunJobInput) {
 	})
 	if err != nil {
 		slog.Warn("git clone failed", "job_id", in.JobID, "error", err)
-		e.markFailed(in.JobID, in.BranchName, fmt.Sprintf("git clone failed: %v", err))
+		e.markFailed(in.JobID, branchName, fmt.Sprintf("git clone failed: %v", err))
 		return
 	}
 	slog.Info("repository cloned", "job_id", in.JobID)
 	repo, err := git.PlainOpen(dir)
 	if err != nil {
-		e.markFailed(in.JobID, in.BranchName, fmt.Sprintf("open repo: %v", err))
+		e.markFailed(in.JobID, branchName, fmt.Sprintf("open repo: %v", err))
 		return
 	}
 	wt, err := repo.Worktree()
 	if err != nil {
-		e.markFailed(in.JobID, in.BranchName, fmt.Sprintf("worktree: %v", err))
+		e.markFailed(in.JobID, branchName, fmt.Sprintf("worktree: %v", err))
 		return
 	}
-	e.appendLog(in.JobID, domain.LogLevelInfo, fmt.Sprintf("Creating branch %s", in.BranchName))
+	e.appendLog(in.JobID, domain.LogLevelInfo, fmt.Sprintf("Creating branch %s", branchName))
 	if err := wt.Checkout(&git.CheckoutOptions{
-		Branch: plumbing.NewBranchReferenceName(in.BranchName),
+		Branch: plumbing.NewBranchReferenceName(branchName),
 		Create: true,
 	}); err != nil {
-		e.markFailed(in.JobID, in.BranchName, fmt.Sprintf("create branch: %v", err))
+		e.markFailed(in.JobID, branchName, fmt.Sprintf("create branch: %v", err))
 		return
 	}
 	e.appendLog(in.JobID, domain.LogLevelInfo, "Running agent…")
@@ -211,28 +212,28 @@ func (e *Executor) Run(ctx context.Context, in RunJobInput) {
 		WorkDir:    dir,
 		Prompt:     in.Prompt,
 		RepoName:   in.RepositoryName,
-		BranchName: in.BranchName,
+		BranchName: branchName,
 		OnLog: func(level domain.LogLevel, message string) {
 			e.appendLog(in.JobID, level, message)
 		},
 	})
 	if err != nil {
 		slog.Warn("agent failed", "job_id", in.JobID, "error", err)
-		e.markFailed(in.JobID, in.BranchName, fmt.Sprintf("agent failed: %v", err))
+		e.markFailed(in.JobID, branchName, fmt.Sprintf("agent failed: %v", err))
 		return
 	}
 	slog.Info("agent finished", "job_id", in.JobID)
 	st, err := wt.Status()
 	if err != nil {
-		e.markFailed(in.JobID, in.BranchName, fmt.Sprintf("git status: %v", err))
+		e.markFailed(in.JobID, branchName, fmt.Sprintf("git status: %v", err))
 		return
 	}
 	if st.IsClean() {
-		e.markFailed(in.JobID, in.BranchName, "no file changes to commit after agent run")
+		e.markFailed(in.JobID, branchName, "no file changes to commit after agent run")
 		return
 	}
 	if _, err := wt.Add("."); err != nil {
-		e.markFailed(in.JobID, in.BranchName, fmt.Sprintf("git add: %v", err))
+		e.markFailed(in.JobID, branchName, fmt.Sprintf("git add: %v", err))
 		return
 	}
 	e.appendLog(in.JobID, domain.LogLevelInfo, "Committing changes…")
@@ -245,10 +246,10 @@ func (e *Executor) Run(ctx context.Context, in RunJobInput) {
 	})
 	if err != nil {
 		if err == git.ErrEmptyCommit {
-			e.markFailed(in.JobID, in.BranchName, "nothing to commit")
+			e.markFailed(in.JobID, branchName, "nothing to commit")
 			return
 		}
-		e.markFailed(in.JobID, in.BranchName, fmt.Sprintf("git commit: %v", err))
+		e.markFailed(in.JobID, branchName, fmt.Sprintf("git commit: %v", err))
 		return
 	}
 	e.appendLog(in.JobID, domain.LogLevelInfo, "Pushing branch…")
@@ -258,18 +259,18 @@ func (e *Executor) Run(ctx context.Context, in RunJobInput) {
 		RemoteName: "origin",
 		Auth:       auth,
 		RefSpecs: []config.RefSpec{
-			config.RefSpec(fmt.Sprintf("refs/heads/%s:refs/heads/%s", in.BranchName, in.BranchName)),
+			config.RefSpec(fmt.Sprintf("refs/heads/%s:refs/heads/%s", branchName, branchName)),
 		},
 	})
 	if err != nil {
 		slog.Warn("git push failed", "job_id", in.JobID, "error", err)
-		e.markFailed(in.JobID, in.BranchName, fmt.Sprintf("git push failed: %v", err))
+		e.markFailed(in.JobID, branchName, fmt.Sprintf("git push failed: %v", err))
 		return
 	}
 	slog.Info("branch pushed", "job_id", in.JobID)
 	owner, repoName, err := splitRepo(in.RepositoryName)
 	if err != nil {
-		e.markFailed(in.JobID, in.BranchName, err.Error())
+		e.markFailed(in.JobID, branchName, err.Error())
 		return
 	}
 	e.appendLog(in.JobID, domain.LogLevelInfo, "Opening pull request…")
@@ -278,7 +279,7 @@ func (e *Executor) Run(ctx context.Context, in RunJobInput) {
 	gh := github.NewClient(nil).WithAuthToken(token)
 	title := "Branchly: " + truncateRunes(in.Prompt, 60)
 	body := summary
-	head := in.BranchName
+	head := branchName
 	baseRef := baseBranch
 	pr, _, err := gh.PullRequests.Create(prCtx, owner, repoName, &github.NewPullRequest{
 		Title: &title,
@@ -288,10 +289,10 @@ func (e *Executor) Run(ctx context.Context, in RunJobInput) {
 	})
 	if err != nil {
 		slog.Warn("open pull request failed", "job_id", in.JobID, "error", err)
-		e.markFailed(in.JobID, in.BranchName, fmt.Sprintf("open pull request: %v", err))
+		e.markFailed(in.JobID, branchName, fmt.Sprintf("open pull request: %v", err))
 		return
 	}
 	prURL := pr.GetHTMLURL()
 	slog.Info("job completed", "job_id", in.JobID, "pr_url", prURL)
-	e.markCompleted(in.JobID, in.BranchName, prURL, summary)
+	e.markCompleted(in.JobID, branchName, prURL, summary)
 }

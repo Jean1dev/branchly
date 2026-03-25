@@ -3,9 +3,7 @@ package service
 import (
 	"context"
 	"fmt"
-	"strings"
 	"time"
-	"unicode"
 
 	"github.com/branchly/branchly-api/internal/config"
 	"github.com/branchly/branchly-api/internal/domain"
@@ -27,30 +25,6 @@ func NewJobService(cfg *config.Config, jobs domain.JobRepository, jobLogs domain
 	return &JobService{cfg: cfg, jobs: jobs, jobLogs: jobLogs, repos: repos, users: users, runner: runner}
 }
 
-func promptToBranchSlug(prompt string) string {
-	var b strings.Builder
-	prevDash := false
-	for _, r := range strings.ToLower(strings.TrimSpace(prompt)) {
-		if unicode.IsLetter(r) || unicode.IsDigit(r) {
-			b.WriteRune(r)
-			prevDash = false
-			continue
-		}
-		if !prevDash && b.Len() > 0 {
-			b.WriteByte('-')
-			prevDash = true
-		}
-	}
-	s := strings.Trim(b.String(), "-")
-	if len(s) > 48 {
-		s = s[:48]
-	}
-	s = strings.Trim(s, "-")
-	if s == "" {
-		s = "task"
-	}
-	return "branchly/" + s
-}
 
 type CreateJobInput struct {
 	RepositoryID string
@@ -79,7 +53,6 @@ func (s *JobService) Create(ctx context.Context, userID string, in CreateJobInpu
 		RepositoryID: repo.ID,
 		Prompt:       in.Prompt,
 		Status:       domain.JobStatusPending,
-		BranchName:   promptToBranchSlug(in.Prompt),
 		CreatedAt:    now,
 		UpdatedAt:    now,
 	}
@@ -89,16 +62,15 @@ func (s *JobService) Create(ctx context.Context, userID string, in CreateJobInpu
 	dispatchCtx, cancel := context.WithTimeout(ctx, 12*time.Second)
 	defer cancel()
 	err = s.runner.DispatchJob(dispatchCtx, infra.DispatchJobPayload{
-		JobID:           job.ID,
-		UserID:          userID,
-		RepositoryName:  repo.FullName,
-		DefaultBranch:   repo.DefaultBranch,
-		BranchName:      job.BranchName,
-		Prompt:          job.Prompt,
-		EncryptedToken:  u.EncryptedToken,
+		JobID:          job.ID,
+		UserID:         userID,
+		RepositoryName: repo.FullName,
+		DefaultBranch:  repo.DefaultBranch,
+		Prompt:         job.Prompt,
+		EncryptedToken: u.EncryptedToken,
 	})
 	if err != nil {
-		_ = s.jobs.UpdateJobFields(ctx, job.ID, domain.JobStatusFailed, "", job.BranchName, ptrTime(time.Now().UTC()))
+		_ = s.jobs.UpdateJobFields(ctx, job.ID, domain.JobStatusFailed, "", "", ptrTime(time.Now().UTC()))
 		return nil, fmt.Errorf("job service: create: dispatch: %w", err)
 	}
 	if err := s.jobs.UpdateStatus(ctx, job.ID, domain.JobStatusRunning); err != nil {
