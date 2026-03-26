@@ -19,6 +19,16 @@ export interface Repository {
   jobsCount: number;
 }
 
+export interface JobCost {
+  inputTokens: number;
+  outputTokens: number;
+  totalTokens: number;
+  estimatedUSD: number;
+  modelUsed: string;
+  durationSecs: number;
+  isEstimate: boolean;
+}
+
 export interface Job {
   id: string;
   repositoryId: string;
@@ -29,6 +39,7 @@ export interface Job {
   prUrl: string | null;
   createdAt: string;
   completedAt: string | null;
+  cost: JobCost | null;
 }
 
 export interface JobLog {

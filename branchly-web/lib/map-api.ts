@@ -1,4 +1,4 @@
-import type { Job, JobLog, JobLogLevel, JobStatus, Repository } from "@/types";
+import type { Job, JobCost, JobLog, JobLogLevel, JobStatus, Repository } from "@/types";
 
 export function unwrapApiData<T>(json: unknown): T {
   if (
@@ -30,6 +30,16 @@ export type ApiRepository = {
   connected_at: string;
 };
 
+export type ApiJobCost = {
+  input_tokens: number;
+  output_tokens: number;
+  total_tokens: number;
+  estimated_usd: number;
+  model_used: string;
+  duration_secs: number;
+  is_estimate: boolean;
+};
+
 export type ApiJob = {
   id: string;
   repository_id: string;
@@ -41,6 +51,7 @@ export type ApiJob = {
   updated_at: string;
   completed_at?: string | null;
   logs?: Array<{ timestamp: string; level: string; message: string }>;
+  cost?: ApiJobCost | null;
 };
 
 function mapJobStatus(s: string): JobStatus {
@@ -96,6 +107,18 @@ export function mapRepository(r: ApiRepository): Repository {
   };
 }
 
+function mapJobCost(c: ApiJobCost): JobCost {
+  return {
+    inputTokens: c.input_tokens,
+    outputTokens: c.output_tokens,
+    totalTokens: c.total_tokens,
+    estimatedUSD: c.estimated_usd,
+    modelUsed: c.model_used,
+    durationSecs: c.duration_secs,
+    isEstimate: c.is_estimate,
+  };
+}
+
 export function mapJob(
   j: ApiJob,
   repositoryName: string | undefined
@@ -110,6 +133,7 @@ export function mapJob(
     prUrl: j.pr_url ?? null,
     createdAt: j.created_at,
     completedAt: j.completed_at ?? null,
+    cost: j.cost ? mapJobCost(j.cost) : null,
   };
 }
 

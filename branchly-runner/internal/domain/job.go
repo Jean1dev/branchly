@@ -40,3 +40,12 @@ type LogEntry struct {
 	Level     LogLevel  `bson:"level"`
 	Message   string    `bson:"message"`
 }
+
+type JobCost struct {
+	InputTokens  int64   `bson:"input_tokens"`
+	OutputTokens int64   `bson:"output_tokens"`
+	TotalTokens  int64   `bson:"total_tokens"`
+	EstimatedUSD float64 `bson:"estimated_usd"`
+	ModelUsed    string  `bson:"model_used"`
+	DurationSecs float64 `bson:"duration_secs"`
+}

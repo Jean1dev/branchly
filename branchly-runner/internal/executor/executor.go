@@ -25,6 +25,7 @@ import (
 type jobUpdater interface {
 	UpdateJobFields(ctx context.Context, id string, status domain.JobStatus, prURL string, branchName string, completedAt *time.Time) error
 	VerifyJobOwner(ctx context.Context, id, userID string) error
+	SetCost(ctx context.Context, id string, cost *domain.JobCost) error
 }
 
 // jobLogger is satisfied by *repository.JobLogRepository.
@@ -195,6 +196,7 @@ func (e *Executor) Run(ctx context.Context, in RunJobInput) {
 	}
 
 	slog.Info("job execution started", "job_id", in.JobID, "repository", in.RepositoryName)
+	startedAt := time.Now()
 
 	// Step 4: decrypt token once. It is used for git operations and the GitHub
 	// API call, then explicitly zeroed after the PR is created (or on any error).
@@ -358,4 +360,11 @@ func (e *Executor) Run(ctx context.Context, in RunJobInput) {
 	prURL := pr.GetHTMLURL()
 	slog.Info("job completed", "job_id", in.JobID, "pr_url", prURL)
 	e.markCompleted(in.JobID, branchName, prURL, summary)
+
+	cost := estimateCost(time.Since(startedAt))
+	cctx, ccancel := persistCtx()
+	defer ccancel()
+	if err := e.jobs.SetCost(cctx, in.JobID, cost); err != nil {
+		slog.Warn("set job cost failed", "job_id", in.JobID, "error", err)
+	}
 }

@@ -1,3 +1,4 @@
+import { JobCostCard } from "@/components/features/job-cost-card";
 import { JobLogPanel } from "@/components/features/job-log-panel";
 import { StatusBadge } from "@/components/features/status-badge";
 import { Card } from "@/components/ui/card";
@@ -111,6 +112,24 @@ export async function JobDetailContent({ id }: { id: string }) {
               </div>
             ) : null}
           </Card>
+
+          {job.cost ? (
+            <JobCostCard cost={job.cost} />
+          ) : job.status === "completed" || job.status === "failed" ? (
+            <Card className="animate-pulse space-y-4 p-6">
+              <div className="h-3 w-1/2 rounded bg-gray-200 dark:bg-gray-700" />
+              <div className="h-7 w-1/3 rounded bg-gray-200 dark:bg-gray-700" />
+              <Separator />
+              <div className="grid grid-cols-2 gap-3">
+                {[...Array(4)].map((_, i) => (
+                  <div key={i} className="space-y-1">
+                    <div className="h-2.5 w-2/3 rounded bg-gray-200 dark:bg-gray-700" />
+                    <div className="h-4 w-1/2 rounded bg-gray-200 dark:bg-gray-700" />
+                  </div>
+                ))}
+              </div>
+            </Card>
+          ) : null}
         </div>
       </div>
     </>

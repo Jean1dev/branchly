@@ -28,6 +28,15 @@ type LogEntry struct {
 	Message   string    `bson:"message" json:"message"`
 }
 
+type JobCost struct {
+	InputTokens  int64   `bson:"input_tokens"  json:"input_tokens"`
+	OutputTokens int64   `bson:"output_tokens" json:"output_tokens"`
+	TotalTokens  int64   `bson:"total_tokens"  json:"total_tokens"`
+	EstimatedUSD float64 `bson:"estimated_usd" json:"estimated_usd"`
+	ModelUsed    string  `bson:"model_used"    json:"model_used"`
+	DurationSecs float64 `bson:"duration_secs" json:"duration_secs"`
+}
+
 type Job struct {
 	ID           string     `bson:"_id"`
 	UserID       string     `bson:"user_id"`
@@ -37,6 +46,7 @@ type Job struct {
 	BranchName   string     `bson:"branch_name"`
 	PRUrl        string     `bson:"pr_url,omitempty"`
 	Logs         []LogEntry `bson:"logs,omitempty"`
+	Cost         *JobCost   `bson:"cost,omitempty"`
 	CreatedAt    time.Time  `bson:"created_at"`
 	UpdatedAt    time.Time  `bson:"updated_at"`
 	CompletedAt  *time.Time `bson:"completed_at,omitempty"`

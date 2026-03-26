@@ -25,6 +25,7 @@ func (m *mockJobRepo) UpdateJobFields(_ context.Context, id string, status domai
 	}
 	return nil
 }
+func (m *mockJobRepo) SetCost(_ context.Context, _ string, _ *domain.JobCost) error { return nil }
 
 type mockJobLogRepo struct {
 	lastMsg string

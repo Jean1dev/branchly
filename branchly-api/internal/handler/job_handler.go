@@ -30,6 +30,16 @@ type logEntryResponse struct {
 	Message   string `json:"message"`
 }
 
+type jobCostResponse struct {
+	InputTokens  int64   `json:"input_tokens"`
+	OutputTokens int64   `json:"output_tokens"`
+	TotalTokens  int64   `json:"total_tokens"`
+	EstimatedUSD float64 `json:"estimated_usd"`
+	ModelUsed    string  `json:"model_used"`
+	DurationSecs float64 `json:"duration_secs"`
+	IsEstimate   bool    `json:"is_estimate"`
+}
+
 type jobResponse struct {
 	ID           string              `json:"id"`
 	RepositoryID string              `json:"repository_id"`
@@ -38,6 +48,7 @@ type jobResponse struct {
 	BranchName   string              `json:"branch_name"`
 	PRUrl        string              `json:"pr_url,omitempty"`
 	Logs         []logEntryResponse  `json:"logs,omitempty"`
+	Cost         *jobCostResponse    `json:"cost,omitempty"`
 	CreatedAt    string              `json:"created_at"`
 	UpdatedAt    string              `json:"updated_at"`
 	CompletedAt  *string             `json:"completed_at,omitempty"`
@@ -57,6 +68,18 @@ func jobToResponse(j *domain.Job) jobResponse {
 		s := j.CompletedAt.UTC().Format("2006-01-02T15:04:05Z07:00")
 		completed = &s
 	}
+	var cost *jobCostResponse
+	if j.Cost != nil {
+		cost = &jobCostResponse{
+			InputTokens:  j.Cost.InputTokens,
+			OutputTokens: j.Cost.OutputTokens,
+			TotalTokens:  j.Cost.TotalTokens,
+			EstimatedUSD: j.Cost.EstimatedUSD,
+			ModelUsed:    j.Cost.ModelUsed,
+			DurationSecs: j.Cost.DurationSecs,
+			IsEstimate:   true,
+		}
+	}
 	return jobResponse{
 		ID:           j.ID,
 		RepositoryID: j.RepositoryID,
@@ -65,6 +88,7 @@ func jobToResponse(j *domain.Job) jobResponse {
 		BranchName:   j.BranchName,
 		PRUrl:        j.PRUrl,
 		Logs:         logs,
+		Cost:         cost,
 		CreatedAt:    j.CreatedAt.UTC().Format("2006-01-02T15:04:05Z07:00"),
 		UpdatedAt:    j.UpdatedAt.UTC().Format("2006-01-02T15:04:05Z07:00"),
 		CompletedAt:  completed,
