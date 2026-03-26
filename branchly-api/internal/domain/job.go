@@ -46,6 +46,7 @@ type JobRepository interface {
 	Create(ctx context.Context, job *Job) error
 	FindByID(ctx context.Context, id string) (*Job, error)
 	FindByUserID(ctx context.Context, userID string, status *JobStatus, repositoryID *string) ([]*Job, error)
+	CountActiveByUserID(ctx context.Context, userID string) (int64, error)
 	UpdateStatus(ctx context.Context, id string, status JobStatus) error
 	UpdateJobFields(ctx context.Context, id string, status JobStatus, prURL string, branchName string, completedAt *time.Time) error
 	FindByIDForUser(ctx context.Context, id string, userID string) (*Job, error)

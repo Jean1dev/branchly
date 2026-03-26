@@ -1,6 +1,22 @@
 package domain
 
-import "time"
+import (
+	"context"
+	"time"
+)
+
+// Repository is the minimal projection of a connected repository needed by
+// the runner for ownership validation. The full document lives in the API.
+type Repository struct {
+	ID       string `bson:"_id"`
+	UserID   string `bson:"user_id"`
+	FullName string `bson:"full_name"`
+}
+
+// RepositoryRepository provides read-only access to the repositories collection.
+type RepositoryRepository interface {
+	FindByID(ctx context.Context, id string) (*Repository, error)
+}
 
 type JobStatus string
 

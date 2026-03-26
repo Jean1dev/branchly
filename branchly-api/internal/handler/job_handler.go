@@ -83,8 +83,13 @@ func (h *JobHandler) Create(c *gin.Context) {
 		Prompt:       req.Prompt,
 	})
 	if err != nil {
-		if errors.Is(err, service.ErrNotFound) {
+		if errors.Is(err, service.ErrRepositoryNotFound) {
 			respond.JSONError(c, http.StatusNotFound, "NOT_FOUND", "repository not found")
+			return
+		}
+		if errors.Is(err, service.ErrRateLimitExceeded) {
+			respond.JSONError(c, http.StatusTooManyRequests, "RATE_LIMIT_EXCEEDED",
+				"you have reached the maximum of 3 active jobs — wait for one to complete")
 			return
 		}
 		respond.JSONError(c, http.StatusBadGateway, "RUNNER_ERROR", "could not start job")

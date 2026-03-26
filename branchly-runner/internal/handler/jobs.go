@@ -26,6 +26,7 @@ func NewJobsHandler(secret string, p *pool.Pool, ex *executor.Executor) *JobsHan
 type postJobBody struct {
 	JobID          string `json:"job_id" binding:"required"`
 	UserID         string `json:"user_id" binding:"required"`
+	RepositoryID   string `json:"repository_id" binding:"required"`
 	RepositoryName string `json:"repository_name" binding:"required"`
 	DefaultBranch  string `json:"default_branch"`
 	Prompt         string `json:"prompt" binding:"required"`
@@ -62,6 +63,7 @@ func (h *JobsHandler) PostJob(c *gin.Context) {
 	in := executor.RunJobInput{
 		JobID:          strings.TrimSpace(body.JobID),
 		UserID:         strings.TrimSpace(body.UserID),
+		RepositoryID:   strings.TrimSpace(body.RepositoryID),
 		RepositoryName: strings.TrimSpace(body.RepositoryName),
 		DefaultBranch:  strings.TrimSpace(body.DefaultBranch),
 		Prompt:         body.Prompt,

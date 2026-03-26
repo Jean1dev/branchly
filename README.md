@@ -155,10 +155,53 @@ branchly-web/
 | `MONGODB_DATABASE` | Database name (default `branchly`) |
 | `JWT_SECRET` | Secret for JWT signing |
 | `JWT_TTL_DAYS` | JWT expiry in days (default `7`) |
-| `ENCRYPTION_KEY` | 32-byte hex key for AES-256-GCM token encryption |
+| `ENCRYPTION_KEY` | 64-char hex (32 bytes) for AES-256-GCM. **Must match the runner.** Generate: `openssl rand -hex 32` |
+| `MAX_ACTIVE_JOBS_PER_USER` | Max concurrent jobs per user (default `3`) |
 | `RUNNER_URL` | Runner service URL |
 | `FRONTEND_URL` | Frontend origin (for CORS) |
 | `ALLOWED_ORIGINS` | Comma-separated allowed CORS origins |
 | `INTERNAL_API_SECRET` | Shared secret for internal endpoints |
 
 > GitHub OAuth credentials (`GITHUB_CLIENT_ID` / `GITHUB_CLIENT_SECRET`) belong in **branchly-web** (NextAuth), not the API.
+
+---
+
+## Security
+
+### 1 — GitHub token encryption (AES-256-GCM)
+
+GitHub OAuth tokens are **never stored in plaintext**. At sign-in the API encrypts each token with AES-256-GCM before writing it to MongoDB. The runner decrypts the token in memory, uses it for git operations and the GitHub API call, then explicitly zeros the variable — the plaintext never touches disk or logs.
+
+**Generate a valid key:**
+
+```bash
+openssl rand -hex 32
+```
+
+Set the output as `ENCRYPTION_KEY` in **both** `branchly-api/.env` and `branchly-runner/.env`. The two services must share the same key — the API encrypts, the runner decrypts.
+
+> In `docker-compose.yml` both services load their key from their respective `.env` files. Ensure both files contain the **same** `ENCRYPTION_KEY` value.
+
+### 2 — Per-user rate limiting
+
+A user can have at most **3 active jobs** (`pending` + `running`) simultaneously. Attempting to create a 4th returns **HTTP 429**:
+
+```json
+{
+  "error": {
+    "code": "RATE_LIMIT_EXCEEDED",
+    "message": "you have reached the maximum of 3 active jobs — wait for one to complete"
+  }
+}
+```
+
+Configurable via `MAX_ACTIVE_JOBS_PER_USER` (default: `3`).
+
+### 3 — Repository ownership validation (defence in depth)
+
+| Layer | Where | What is checked |
+|---|---|---|
+| **API** | `job_service.Create` | The `repository_id` belongs to the authenticated user. Returns HTTP **404** for both "not found" and "wrong owner" — never 403 — to avoid leaking repository existence. |
+| **Runner** | `executor.Run` (before any I/O) | The repository document in MongoDB has `user_id == job.user_id` **and** `full_name == repository_name` from the payload. A tampered payload that swaps the clone URL while keeping a valid ID is rejected before any filesystem or network operation. |
+
+Security-relevant errors are logged server-side with full context (`job_id`, `user_id`, `repository_id`) but return generic messages to clients.

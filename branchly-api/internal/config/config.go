@@ -22,6 +22,8 @@ type Config struct {
 
 	EncryptionKey []byte
 
+	MaxActiveJobsPerUser int
+
 	RunnerURL string
 
 	RunnerSecret string
@@ -72,6 +74,15 @@ func Load() (*Config, error) {
 		return nil, fmt.Errorf("config: MONGODB_DATABASE is required")
 	}
 
+	maxActiveJobs := 3
+	if v := strings.TrimSpace(os.Getenv("MAX_ACTIVE_JOBS_PER_USER")); v != "" {
+		n, err := strconv.Atoi(v)
+		if err != nil || n < 1 {
+			return nil, fmt.Errorf("config: MAX_ACTIVE_JOBS_PER_USER must be a positive integer")
+		}
+		maxActiveJobs = n
+	}
+
 	runnerURL := strings.TrimSpace(os.Getenv("RUNNER_URL"))
 	if runnerURL == "" {
 		return nil, fmt.Errorf("config: RUNNER_URL is required")
@@ -102,17 +113,18 @@ func Load() (*Config, error) {
 	}
 
 	return &Config{
-		Port:                port,
-		MongoURI:            mongoURI,
-		MongoDatabase:       dbName,
-		JWTSecret:           []byte(jwtSecret),
-		JWTTTLDays:          ttlDays,
-		EncryptionKey:       encKey,
-		RunnerURL:           strings.TrimSuffix(runnerURL, "/"),
-		RunnerSecret:        runnerSecret,
-		FrontendURL:         strings.TrimSuffix(frontend, "/"),
-		AllowedOrigins: origins,
-		InternalSecret: internalSecret,
+		Port:                 port,
+		MongoURI:             mongoURI,
+		MongoDatabase:        dbName,
+		JWTSecret:            []byte(jwtSecret),
+		JWTTTLDays:           ttlDays,
+		EncryptionKey:        encKey,
+		MaxActiveJobsPerUser: maxActiveJobs,
+		RunnerURL:            strings.TrimSuffix(runnerURL, "/"),
+		RunnerSecret:         runnerSecret,
+		FrontendURL:          strings.TrimSuffix(frontend, "/"),
+		AllowedOrigins:       origins,
+		InternalSecret:       internalSecret,
 	}, nil
 }
 

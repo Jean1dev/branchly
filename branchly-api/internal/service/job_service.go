@@ -12,13 +12,18 @@ import (
 	"go.mongodb.org/mongo-driver/bson/primitive"
 )
 
+// runnerDispatcher abstracts the HTTP call to the runner, making it injectable in tests.
+type runnerDispatcher interface {
+	DispatchJob(ctx context.Context, payload infra.DispatchJobPayload) error
+}
+
 type JobService struct {
 	cfg     *config.Config
 	jobs    domain.JobRepository
 	jobLogs domain.JobLogRepository
 	repos   domain.ConnectedRepositoryRepository
 	users   domain.UserRepository
-	runner  *infra.RunnerClient
+	runner  runnerDispatcher
 }
 
 func NewJobService(cfg *config.Config, jobs domain.JobRepository, jobLogs domain.JobLogRepository, repos domain.ConnectedRepositoryRepository, users domain.UserRepository, runner *infra.RunnerClient) *JobService {
@@ -32,13 +37,25 @@ type CreateJobInput struct {
 }
 
 func (s *JobService) Create(ctx context.Context, userID string, in CreateJobInput) (*domain.Job, error) {
+	// Validate repository ownership — intentionally returns ErrRepositoryNotFound
+	// for both "not found" and "wrong owner" to avoid leaking existence.
 	repo, err := s.repos.FindByID(ctx, in.RepositoryID)
 	if err != nil {
 		return nil, fmt.Errorf("job service: create: repo: %w", err)
 	}
 	if repo == nil || repo.UserID != userID {
-		return nil, ErrNotFound
+		return nil, ErrRepositoryNotFound
 	}
+
+	// Enforce per-user active-job rate limit.
+	active, err := s.jobs.CountActiveByUserID(ctx, userID)
+	if err != nil {
+		return nil, fmt.Errorf("job service: create: rate limit check: %w", err)
+	}
+	if active >= int64(s.cfg.MaxActiveJobsPerUser) {
+		return nil, ErrRateLimitExceeded
+	}
+
 	u, err := s.users.FindByID(ctx, userID)
 	if err != nil {
 		return nil, fmt.Errorf("job service: create: user: %w", err)
@@ -64,6 +81,7 @@ func (s *JobService) Create(ctx context.Context, userID string, in CreateJobInpu
 	err = s.runner.DispatchJob(dispatchCtx, infra.DispatchJobPayload{
 		JobID:          job.ID,
 		UserID:         userID,
+		RepositoryID:   repo.ID,
 		RepositoryName: repo.FullName,
 		DefaultBranch:  repo.DefaultBranch,
 		Prompt:         job.Prompt,
