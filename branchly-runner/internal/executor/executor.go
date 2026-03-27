@@ -10,6 +10,7 @@ import (
 	"sync"
 	"time"
 
+	agentpkg "github.com/branchly/branchly-runner/internal/agent"
 	"github.com/branchly/branchly-runner/internal/domain"
 	"github.com/branchly/branchly-runner/internal/infra"
 	"github.com/branchly/branchly-runner/internal/slug"
@@ -41,10 +42,11 @@ type RunJobInput struct {
 	DefaultBranch  string
 	Prompt         string
 	EncryptedToken string
+	AgentType      domain.AgentType
 }
 
 type Executor struct {
-	agent    domain.Agent
+	factory  *agentpkg.Factory
 	jobs     jobUpdater
 	jobLogs  jobLogger
 	repos    domain.RepositoryRepository
@@ -53,8 +55,8 @@ type Executor struct {
 	appendMu sync.Mutex
 }
 
-func NewExecutor(agent domain.Agent, jobs jobUpdater, jobLogs jobLogger, repos domain.RepositoryRepository, encKey []byte, workDir string) *Executor {
-	return &Executor{agent: agent, jobs: jobs, jobLogs: jobLogs, repos: repos, encKey: encKey, workDir: workDir}
+func NewExecutor(factory *agentpkg.Factory, jobs jobUpdater, jobLogs jobLogger, repos domain.RepositoryRepository, encKey []byte, workDir string) *Executor {
+	return &Executor{factory: factory, jobs: jobs, jobLogs: jobLogs, repos: repos, encKey: encKey, workDir: workDir}
 }
 
 func persistCtx() (context.Context, context.CancelFunc) {
@@ -198,7 +200,15 @@ func (e *Executor) Run(ctx context.Context, in RunJobInput) {
 	slog.Info("job execution started", "job_id", in.JobID, "repository", in.RepositoryName)
 	startedAt := time.Now()
 
-	// Step 4: decrypt token once. It is used for git operations and the GitHub
+	// Step 4: resolve the agent early — fail fast before any expensive I/O.
+	selectedAgent, err := e.factory.Create(in.AgentType)
+	if err != nil {
+		slog.Error("unknown agent type", "job_id", in.JobID, "agent_type", in.AgentType)
+		e.markFailed(in.JobID, branchName, "unknown agent type: "+string(in.AgentType))
+		return
+	}
+
+	// Step 5: decrypt token once. It is used for git operations and the GitHub
 	// API call, then explicitly zeroed after the PR is created (or on any error).
 	token, err := infra.Decrypt(in.EncryptedToken, e.encKey)
 	in.EncryptedToken = "" // clear the encrypted form from this goroutine's stack
@@ -264,7 +274,7 @@ func (e *Executor) Run(ctx context.Context, in RunJobInput) {
 	e.appendLog(in.JobID, domain.LogLevelInfo, "Running agent…")
 	agentCtx, agentCancel := context.WithTimeout(ctx, 30*time.Minute)
 	defer agentCancel()
-	summary, err := e.agent.Run(agentCtx, domain.AgentInput{
+	summary, err := selectedAgent.Run(agentCtx, domain.AgentInput{
 		WorkDir:    dir,
 		Prompt:     in.Prompt,
 		RepoName:   in.RepositoryName,
@@ -361,7 +371,7 @@ func (e *Executor) Run(ctx context.Context, in RunJobInput) {
 	slog.Info("job completed", "job_id", in.JobID, "pr_url", prURL)
 	e.markCompleted(in.JobID, branchName, prURL, summary)
 
-	cost := estimateCost(time.Since(startedAt))
+	cost := estimateCost(time.Since(startedAt), in.AgentType)
 	cctx, ccancel := persistCtx()
 	defer ccancel()
 	if err := e.jobs.SetCost(cctx, in.JobID, cost); err != nil {

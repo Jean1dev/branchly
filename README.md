@@ -166,6 +166,33 @@ branchly-web/
 
 ---
 
+## Supported agents
+
+Branchly dispatches jobs to one of two AI agents. The user selects the agent when creating a task.
+
+| Agent | Provider | Key required | Notes |
+|---|---|---|---|
+| **Claude Code** (`claude-code`) | Anthropic | `ANTHROPIC_API_KEY` | Best quality. Uses Claude Sonnet 4.6. |
+| **Gemini CLI** (`gemini`) | Google | `GEMINI_API_KEY` | Free tier available. Uses Gemini 2.0 Flash. |
+
+### Obtaining API keys
+
+**Anthropic (Claude Code)**
+
+1. Go to [console.anthropic.com](https://console.anthropic.com)
+2. Create an API key under **API Keys**
+3. Set `ANTHROPIC_API_KEY=<key>` in `branchly-runner/.env`
+
+**Google (Gemini CLI)**
+
+1. Go to [aistudio.google.com/apikey](https://aistudio.google.com/apikey)
+2. Create a free API key
+3. Set `GEMINI_API_KEY=<key>` in `branchly-runner/.env`
+
+> Neither key is ever stored in MongoDB or included in logs. The runner reads them directly from the environment and they never leave the runner process.
+
+---
+
 ## Security
 
 ### 1 — GitHub token encryption (AES-256-GCM)

@@ -34,6 +34,7 @@ func NewJobService(cfg *config.Config, jobs domain.JobRepository, jobLogs domain
 type CreateJobInput struct {
 	RepositoryID string
 	Prompt       string
+	AgentType    domain.AgentType
 }
 
 func (s *JobService) Create(ctx context.Context, userID string, in CreateJobInput) (*domain.Job, error) {
@@ -69,6 +70,7 @@ func (s *JobService) Create(ctx context.Context, userID string, in CreateJobInpu
 		UserID:       userID,
 		RepositoryID: repo.ID,
 		Prompt:       in.Prompt,
+		AgentType:    in.AgentType,
 		Status:       domain.JobStatusPending,
 		CreatedAt:    now,
 		UpdatedAt:    now,
@@ -86,6 +88,7 @@ func (s *JobService) Create(ctx context.Context, userID string, in CreateJobInpu
 		DefaultBranch:  repo.DefaultBranch,
 		Prompt:         job.Prompt,
 		EncryptedToken: u.EncryptedToken,
+		AgentType:      string(job.AgentType),
 	})
 	if err != nil {
 		_ = s.jobs.UpdateJobFields(ctx, job.ID, domain.JobStatusFailed, "", "", ptrTime(time.Now().UTC()))

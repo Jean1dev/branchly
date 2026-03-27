@@ -3,23 +3,28 @@ package executor
 import (
 	"testing"
 	"time"
+
+	"github.com/branchly/branchly-runner/internal/domain"
 )
 
 func TestEstimateCost_ZeroDuration(t *testing.T) {
-	c := estimateCost(0)
+	c := estimateCost(0, domain.AgentTypeClaudeCode)
 	if c.InputTokens != 0 || c.OutputTokens != 0 || c.TotalTokens != 0 {
 		t.Errorf("expected zero tokens for zero duration, got %+v", c)
 	}
 	if c.EstimatedUSD != 0 {
 		t.Errorf("expected zero cost for zero duration, got %v", c.EstimatedUSD)
 	}
-	if c.ModelUsed != modelUsed {
-		t.Errorf("expected model %q, got %q", modelUsed, c.ModelUsed)
+	if c.ModelUsed != claudeModel {
+		t.Errorf("expected model %q, got %q", claudeModel, c.ModelUsed)
+	}
+	if c.AgentType != domain.AgentTypeClaudeCode {
+		t.Errorf("expected agent type %q, got %q", domain.AgentTypeClaudeCode, c.AgentType)
 	}
 }
 
-func TestEstimateCost_OneMinute(t *testing.T) {
-	c := estimateCost(60 * time.Second)
+func TestEstimateCost_OneMinute_ClaudeCode(t *testing.T) {
+	c := estimateCost(60*time.Second, domain.AgentTypeClaudeCode)
 	wantInput := int64(60 * inputTokensPerSec)
 	wantOutput := int64(60 * outputTokensPerSec)
 	if c.InputTokens != wantInput {
@@ -37,10 +42,8 @@ func TestEstimateCost_OneMinute(t *testing.T) {
 }
 
 func TestEstimateCost_CostCalculation(t *testing.T) {
-	// 1 000 000 input tokens => $3.00, 1 000 000 output tokens => $15.00
 	secsForMInputTokens := float64(1_000_000) / inputTokensPerSec
-	c := estimateCost(time.Duration(secsForMInputTokens) * time.Second)
-	// At exactly 1M input tokens the input cost should be $3.00.
+	c := estimateCost(time.Duration(secsForMInputTokens)*time.Second, domain.AgentTypeClaudeCode)
 	wantInputCost := 3.00
 	gotInputCost := float64(c.InputTokens) / 1_000_000 * pricePerMInputUSD
 	if diff := gotInputCost - wantInputCost; diff > 0.01 || diff < -0.01 {
@@ -49,18 +52,24 @@ func TestEstimateCost_CostCalculation(t *testing.T) {
 }
 
 func TestEstimateCost_NegativeDurationTreatedAsZero(t *testing.T) {
-	c := estimateCost(-5 * time.Second)
+	c := estimateCost(-5*time.Second, domain.AgentTypeClaudeCode)
 	if c.InputTokens != 0 || c.OutputTokens != 0 {
 		t.Errorf("negative duration should yield zero tokens, got %+v", c)
 	}
 }
 
-func TestEstimateCost_TenMinutes_ModelName(t *testing.T) {
-	c := estimateCost(10 * time.Minute)
-	if c.ModelUsed != "claude-sonnet-4-6" {
-		t.Errorf("wrong model: %q", c.ModelUsed)
+func TestEstimateCost_Gemini_ZeroCost(t *testing.T) {
+	c := estimateCost(10*time.Minute, domain.AgentTypeGemini)
+	if c.EstimatedUSD != 0 {
+		t.Errorf("gemini free tier should have zero cost, got %v", c.EstimatedUSD)
 	}
-	if c.EstimatedUSD <= 0 {
-		t.Errorf("expected positive cost for 10-minute job, got %v", c.EstimatedUSD)
+	if c.ModelUsed != geminiModel {
+		t.Errorf("expected model %q, got %q", geminiModel, c.ModelUsed)
+	}
+	if c.AgentType != domain.AgentTypeGemini {
+		t.Errorf("expected agent type %q, got %q", domain.AgentTypeGemini, c.AgentType)
+	}
+	if c.DurationSecs != 600 {
+		t.Errorf("duration_secs: want 600, got %v", c.DurationSecs)
 	}
 }

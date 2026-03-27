@@ -19,6 +19,7 @@ type DispatchJobPayload struct {
 	DefaultBranch  string `json:"default_branch"`
 	Prompt         string `json:"prompt"`
 	EncryptedToken string `json:"encrypted_token"`
+	AgentType      string `json:"agent_type"`
 }
 
 type RunnerClient struct {

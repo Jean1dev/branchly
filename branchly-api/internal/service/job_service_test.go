@@ -81,9 +81,13 @@ func (m *mockUserRepo) UpsertByProvider(_ context.Context, _ *domain.User) (*dom
 }
 
 // mockRunnerClient satisfies the runnerDispatcher interface.
-type mockRunnerClient struct{ failDispatch bool }
+type mockRunnerClient struct {
+	failDispatch bool
+	lastPayload  infra.DispatchJobPayload
+}
 
-func (m *mockRunnerClient) DispatchJob(_ context.Context, _ infra.DispatchJobPayload) error {
+func (m *mockRunnerClient) DispatchJob(_ context.Context, payload infra.DispatchJobPayload) error {
+	m.lastPayload = payload
 	if m.failDispatch {
 		return errors.New("runner down")
 	}
@@ -227,5 +231,58 @@ func TestCreate_NonExistentRepoReturnsErrRepositoryNotFound(t *testing.T) {
 	})
 	if !errors.Is(err, ErrRepositoryNotFound) {
 		t.Errorf("expected ErrRepositoryNotFound, got %v", err)
+	}
+}
+
+// ---- tests: agent type ----
+
+func TestCreate_AgentTypeIsIncludedInDispatchPayload(t *testing.T) {
+	runner := &mockRunnerClient{}
+	svc := &JobService{
+		cfg:     &config.Config{MaxActiveJobsPerUser: 3},
+		jobs:    &mockJobRepo{},
+		jobLogs: &mockJobLogRepo{},
+		repos:   &mockRepoRepo{repo: ownedRepo("user-1")},
+		users:   &mockUserRepo{user: activeUser("user-1")},
+		runner:  runner,
+	}
+	_, err := svc.Create(context.Background(), "user-1", CreateJobInput{
+		RepositoryID: "repo-1",
+		Prompt:       "add feature",
+		AgentType:    domain.AgentTypeGemini,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if runner.lastPayload.AgentType != string(domain.AgentTypeGemini) {
+		t.Errorf("expected AgentType %q in payload, got %q",
+			domain.AgentTypeGemini, runner.lastPayload.AgentType)
+	}
+}
+
+func TestCreate_AgentTypeIsPersistedOnJob(t *testing.T) {
+	jobsMock := &mockJobRepo{}
+	svc := &JobService{
+		cfg:     &config.Config{MaxActiveJobsPerUser: 3},
+		jobs:    jobsMock,
+		jobLogs: &mockJobLogRepo{},
+		repos:   &mockRepoRepo{repo: ownedRepo("user-1")},
+		users:   &mockUserRepo{user: activeUser("user-1")},
+		runner:  &mockRunnerClient{},
+	}
+	_, err := svc.Create(context.Background(), "user-1", CreateJobInput{
+		RepositoryID: "repo-1",
+		Prompt:       "add feature",
+		AgentType:    domain.AgentTypeClaudeCode,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(jobsMock.created) == 0 {
+		t.Fatal("expected job to be created")
+	}
+	if jobsMock.created[0].AgentType != domain.AgentTypeClaudeCode {
+		t.Errorf("expected job.AgentType %q, got %q",
+			domain.AgentTypeClaudeCode, jobsMock.created[0].AgentType)
 	}
 }

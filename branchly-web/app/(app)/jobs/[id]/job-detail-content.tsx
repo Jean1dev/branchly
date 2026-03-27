@@ -11,6 +11,7 @@ import {
   type ApiJob,
 } from "@/lib/map-api";
 import { formatDate, truncate } from "@/lib/utils";
+import { AGENTS } from "@/types";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
@@ -67,6 +68,23 @@ export async function JobDetailContent({ id }: { id: string }) {
         </div>
         <div className="lg:col-span-2">
           <Card className="space-y-4 p-6">
+            <div>
+              <p className="text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                Agent
+              </p>
+              {(() => {
+                const agent = AGENTS.find((a) => a.id === job.agentType) ?? AGENTS[0];
+                return (
+                  <p className="mt-1 text-sm font-medium">
+                    {agent.name}{" "}
+                    <span className="font-normal text-gray-500 dark:text-gray-400">
+                      · {agent.provider}
+                    </span>
+                  </p>
+                );
+              })()}
+            </div>
+            <Separator />
             <div>
               <p className="text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">
                 Status

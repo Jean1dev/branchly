@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	agentpkg "github.com/branchly/branchly-runner/internal/agent"
 	"github.com/branchly/branchly-runner/internal/domain"
 )
 
@@ -45,7 +46,7 @@ func (m *mockRepoRepo) FindByID(_ context.Context, _ string) (*domain.Repository
 	return m.repo, m.err
 }
 
-// stubAgent is never reached in ownership-failure tests.
+// stubAgent is a no-op agent used in executor tests.
 type stubAgent struct{}
 
 func (s *stubAgent) Run(_ context.Context, _ domain.AgentInput) (string, error) {
@@ -57,8 +58,9 @@ func (s *stubAgent) Run(_ context.Context, _ domain.AgentInput) (string, error) 
 func newTestExecutor(repoMock *mockRepoRepo) (*Executor, *mockJobRepo, *mockJobLogRepo) {
 	jobs := &mockJobRepo{}
 	logs := &mockJobLogRepo{}
+	factory := agentpkg.NewFactory(&stubAgent{}, &stubAgent{})
 	ex := &Executor{
-		agent:   &stubAgent{},
+		factory: factory,
 		jobs:    jobs,
 		jobLogs: logs,
 		repos:   repoMock,
@@ -77,6 +79,7 @@ func validInput() RunJobInput {
 		DefaultBranch:  "main",
 		Prompt:         "add feature",
 		EncryptedToken: "invalid-but-ownership-checked-before-decrypt",
+		AgentType:      domain.AgentTypeClaudeCode,
 	}
 }
 
@@ -84,29 +87,18 @@ func validInput() RunJobInput {
 
 func TestRun_ValidOwnership_ProceedsToDecrypt(t *testing.T) {
 	repo := &domain.Repository{ID: "repo-1", UserID: "user-1", FullName: "owner/repo"}
-	ex, jobs, _ := newTestExecutor(&mockRepoRepo{repo: repo})
-
+	ex, _, _ := newTestExecutor(&mockRepoRepo{repo: repo})
+	// Ownership passes — execution proceeds past ownership checks to decrypt.
+	// With a zero key + invalid token, decrypt fails gracefully.
 	ex.Run(context.Background(), validInput())
-
-	// Ownership passed — the job should NOT be marked failed due to ownership.
-	// It will fail at decrypt (zero key + invalid token), but not with
-	// "repository ownership validation failed".
-	if jobs.failedJobID == "job-1" {
-		// Check if the failure was due to ownership — it should not be
-		// We can't distinguish reasons without reading logs, so we just
-		// assert the run got past the ownership check.
-		// A deeper check is in the negative tests below.
-	}
-	// If we reached here without panicking the ownership check passed — pass.
+	// If we reached here without panicking the ownership check passed.
 }
 
 func TestRun_DivergentUserID_MarksJobFailed(t *testing.T) {
-	// Repo belongs to user-2, but payload says user-1 — ownership mismatch.
 	repo := &domain.Repository{ID: "repo-1", UserID: "user-2", FullName: "owner/repo"}
 	ex, jobs, logs := newTestExecutor(&mockRepoRepo{repo: repo})
 
-	in := validInput()
-	ex.Run(context.Background(), in)
+	ex.Run(context.Background(), validInput())
 
 	if jobs.failedJobID != "job-1" {
 		t.Error("expected job to be marked failed on ownership mismatch")
@@ -117,7 +109,6 @@ func TestRun_DivergentUserID_MarksJobFailed(t *testing.T) {
 }
 
 func TestRun_NilRepo_MarksJobFailed(t *testing.T) {
-	// Repository not found in the runner's database.
 	ex, jobs, logs := newTestExecutor(&mockRepoRepo{repo: nil})
 
 	ex.Run(context.Background(), validInput())
@@ -131,13 +122,11 @@ func TestRun_NilRepo_MarksJobFailed(t *testing.T) {
 }
 
 func TestRun_RepositoryNameMismatch_MarksJobFailed(t *testing.T) {
-	// Repo ID is valid and owned by the user, but the name in the payload
-	// does not match what is stored in the database.
 	repo := &domain.Repository{ID: "repo-1", UserID: "user-1", FullName: "owner/real-repo"}
 	ex, jobs, logs := newTestExecutor(&mockRepoRepo{repo: repo})
 
 	in := validInput()
-	in.RepositoryName = "attacker/swapped-repo" // tampered name
+	in.RepositoryName = "attacker/swapped-repo"
 
 	ex.Run(context.Background(), in)
 
@@ -156,5 +145,22 @@ func TestRun_RepoLookupError_MarksJobFailed(t *testing.T) {
 
 	if jobs.failedJobID != "job-1" {
 		t.Error("expected job to be marked failed when repo lookup returns error")
+	}
+}
+
+func TestRun_UnknownAgentType_MarksJobFailed(t *testing.T) {
+	repo := &domain.Repository{ID: "repo-1", UserID: "user-1", FullName: "owner/repo"}
+	ex, jobs, logs := newTestExecutor(&mockRepoRepo{repo: repo})
+
+	in := validInput()
+	in.AgentType = "openai" // not registered in factory
+
+	ex.Run(context.Background(), in)
+
+	if jobs.failedJobID != "job-1" {
+		t.Error("expected job to be marked failed for unknown agent type")
+	}
+	if logs.lastMsg == "" {
+		t.Error("expected a failure log message for unknown agent type")
 	}
 }

@@ -5,6 +5,21 @@ import (
 	"time"
 )
 
+type AgentType string
+
+const (
+	AgentTypeClaudeCode AgentType = "claude-code"
+	AgentTypeGemini     AgentType = "gemini"
+)
+
+func (a AgentType) IsValid() bool {
+	switch a {
+	case AgentTypeClaudeCode, AgentTypeGemini:
+		return true
+	}
+	return false
+}
+
 // Repository is the minimal projection of a connected repository needed by
 // the runner for ownership validation. The full document lives in the API.
 type Repository struct {
@@ -42,10 +57,11 @@ type LogEntry struct {
 }
 
 type JobCost struct {
-	InputTokens  int64   `bson:"input_tokens"`
-	OutputTokens int64   `bson:"output_tokens"`
-	TotalTokens  int64   `bson:"total_tokens"`
-	EstimatedUSD float64 `bson:"estimated_usd"`
-	ModelUsed    string  `bson:"model_used"`
-	DurationSecs float64 `bson:"duration_secs"`
+	AgentType    AgentType `bson:"agent_type"`
+	ModelUsed    string    `bson:"model_used"`
+	InputTokens  int64     `bson:"input_tokens"`
+	OutputTokens int64     `bson:"output_tokens"`
+	TotalTokens  int64     `bson:"total_tokens"`
+	EstimatedUSD float64   `bson:"estimated_usd"`
+	DurationSecs float64   `bson:"duration_secs"`
 }

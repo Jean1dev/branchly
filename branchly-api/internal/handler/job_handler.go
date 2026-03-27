@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"context"
 	"errors"
 	"net/http"
 
@@ -11,17 +12,25 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-type JobHandler struct {
-	svc *service.JobService
+// jobService is the subset of service.JobService used by the handler.
+type jobService interface {
+	Create(ctx context.Context, userID string, in service.CreateJobInput) (*domain.Job, error)
+	List(ctx context.Context, userID string, status *domain.JobStatus, repositoryID *string) ([]*domain.Job, error)
+	Get(ctx context.Context, userID, jobID string) (*domain.Job, error)
 }
 
-func NewJobHandler(svc *service.JobService) *JobHandler {
+type JobHandler struct {
+	svc jobService
+}
+
+func NewJobHandler(svc jobService) *JobHandler {
 	return &JobHandler{svc: svc}
 }
 
 type createJobRequest struct {
 	RepositoryID string `json:"repository_id" binding:"required"`
 	Prompt       string `json:"prompt" binding:"required"`
+	AgentType    string `json:"agent_type"`
 }
 
 type logEntryResponse struct {
@@ -31,27 +40,29 @@ type logEntryResponse struct {
 }
 
 type jobCostResponse struct {
+	AgentType    string  `json:"agent_type"`
+	ModelUsed    string  `json:"model_used"`
 	InputTokens  int64   `json:"input_tokens"`
 	OutputTokens int64   `json:"output_tokens"`
 	TotalTokens  int64   `json:"total_tokens"`
 	EstimatedUSD float64 `json:"estimated_usd"`
-	ModelUsed    string  `json:"model_used"`
 	DurationSecs float64 `json:"duration_secs"`
 	IsEstimate   bool    `json:"is_estimate"`
 }
 
 type jobResponse struct {
-	ID           string              `json:"id"`
-	RepositoryID string              `json:"repository_id"`
-	Prompt       string              `json:"prompt"`
-	Status       string              `json:"status"`
-	BranchName   string              `json:"branch_name"`
-	PRUrl        string              `json:"pr_url,omitempty"`
-	Logs         []logEntryResponse  `json:"logs,omitempty"`
-	Cost         *jobCostResponse    `json:"cost,omitempty"`
-	CreatedAt    string              `json:"created_at"`
-	UpdatedAt    string              `json:"updated_at"`
-	CompletedAt  *string             `json:"completed_at,omitempty"`
+	ID           string             `json:"id"`
+	RepositoryID string             `json:"repository_id"`
+	Prompt       string             `json:"prompt"`
+	Status       string             `json:"status"`
+	AgentType    string             `json:"agent_type"`
+	BranchName   string             `json:"branch_name"`
+	PRUrl        string             `json:"pr_url,omitempty"`
+	Logs         []logEntryResponse `json:"logs,omitempty"`
+	Cost         *jobCostResponse   `json:"cost,omitempty"`
+	CreatedAt    string             `json:"created_at"`
+	UpdatedAt    string             `json:"updated_at"`
+	CompletedAt  *string            `json:"completed_at,omitempty"`
 }
 
 func jobToResponse(j *domain.Job) jobResponse {
@@ -71,11 +82,12 @@ func jobToResponse(j *domain.Job) jobResponse {
 	var cost *jobCostResponse
 	if j.Cost != nil {
 		cost = &jobCostResponse{
+			AgentType:    string(j.Cost.AgentType),
+			ModelUsed:    j.Cost.ModelUsed,
 			InputTokens:  j.Cost.InputTokens,
 			OutputTokens: j.Cost.OutputTokens,
 			TotalTokens:  j.Cost.TotalTokens,
 			EstimatedUSD: j.Cost.EstimatedUSD,
-			ModelUsed:    j.Cost.ModelUsed,
 			DurationSecs: j.Cost.DurationSecs,
 			IsEstimate:   true,
 		}
@@ -85,6 +97,7 @@ func jobToResponse(j *domain.Job) jobResponse {
 		RepositoryID: j.RepositoryID,
 		Prompt:       j.Prompt,
 		Status:       string(j.Status),
+		AgentType:    string(j.AgentType),
 		BranchName:   j.BranchName,
 		PRUrl:        j.PRUrl,
 		Logs:         logs,
@@ -101,10 +114,16 @@ func (h *JobHandler) Create(c *gin.Context) {
 		respond.JSONError(c, http.StatusBadRequest, "BAD_REQUEST", "invalid body")
 		return
 	}
+	if !domain.AgentType(req.AgentType).IsValid() {
+		respond.JSONError(c, http.StatusBadRequest, "INVALID_AGENT_TYPE",
+			"agent_type must be one of: claude-code, gemini")
+		return
+	}
 	uid := c.GetString(middleware.ContextUserIDKey)
 	job, err := h.svc.Create(c.Request.Context(), uid, service.CreateJobInput{
 		RepositoryID: req.RepositoryID,
 		Prompt:       req.Prompt,
+		AgentType:    domain.AgentType(req.AgentType),
 	})
 	if err != nil {
 		if errors.Is(err, service.ErrRepositoryNotFound) {

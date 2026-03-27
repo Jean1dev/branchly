@@ -1,4 +1,4 @@
-import type { Job, JobCost, JobLog, JobLogLevel, JobStatus, Repository } from "@/types";
+import type { AgentType, Job, JobCost, JobLog, JobLogLevel, JobStatus, Repository } from "@/types";
 
 export function unwrapApiData<T>(json: unknown): T {
   if (
@@ -45,6 +45,7 @@ export type ApiJob = {
   repository_id: string;
   prompt: string;
   status: string;
+  agent_type?: string;
   branch_name: string;
   pr_url?: string;
   created_at: string;
@@ -119,6 +120,11 @@ function mapJobCost(c: ApiJobCost): JobCost {
   };
 }
 
+function mapAgentType(s: string | undefined): AgentType {
+  if (s === "gemini") return "gemini";
+  return "claude-code";
+}
+
 export function mapJob(
   j: ApiJob,
   repositoryName: string | undefined
@@ -129,6 +135,7 @@ export function mapJob(
     repositoryName: repositoryName ?? j.repository_id,
     prompt: j.prompt,
     status: mapJobStatus(j.status),
+    agentType: mapAgentType(j.agent_type),
     branchName: j.branch_name,
     prUrl: j.pr_url ?? null,
     createdAt: j.created_at,

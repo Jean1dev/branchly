@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/branchly/branchly-runner/internal/domain"
 	"github.com/branchly/branchly-runner/internal/executor"
 	"github.com/branchly/branchly-runner/internal/pool"
 	"github.com/gin-gonic/gin"
@@ -31,6 +32,7 @@ type postJobBody struct {
 	DefaultBranch  string `json:"default_branch"`
 	Prompt         string `json:"prompt" binding:"required"`
 	EncryptedToken string `json:"encrypted_token" binding:"required"`
+	AgentType      string `json:"agent_type"`
 }
 
 const maxRunnerSecretBytes = 512
@@ -68,6 +70,7 @@ func (h *JobsHandler) PostJob(c *gin.Context) {
 		DefaultBranch:  strings.TrimSpace(body.DefaultBranch),
 		Prompt:         body.Prompt,
 		EncryptedToken: body.EncryptedToken,
+		AgentType:      domain.AgentType(strings.TrimSpace(body.AgentType)),
 	}
 	ok := h.pool.TryGo(func() {
 		h.executor.Run(context.Background(), in)

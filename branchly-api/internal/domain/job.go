@@ -5,6 +5,21 @@ import (
 	"time"
 )
 
+type AgentType string
+
+const (
+	AgentTypeClaudeCode AgentType = "claude-code"
+	AgentTypeGemini     AgentType = "gemini"
+)
+
+func (a AgentType) IsValid() bool {
+	switch a {
+	case AgentTypeClaudeCode, AgentTypeGemini:
+		return true
+	}
+	return false
+}
+
 type JobStatus string
 
 const (
@@ -29,12 +44,13 @@ type LogEntry struct {
 }
 
 type JobCost struct {
-	InputTokens  int64   `bson:"input_tokens"  json:"input_tokens"`
-	OutputTokens int64   `bson:"output_tokens" json:"output_tokens"`
-	TotalTokens  int64   `bson:"total_tokens"  json:"total_tokens"`
-	EstimatedUSD float64 `bson:"estimated_usd" json:"estimated_usd"`
-	ModelUsed    string  `bson:"model_used"    json:"model_used"`
-	DurationSecs float64 `bson:"duration_secs" json:"duration_secs"`
+	AgentType    AgentType `bson:"agent_type"    json:"agent_type"`
+	ModelUsed    string    `bson:"model_used"    json:"model_used"`
+	InputTokens  int64     `bson:"input_tokens"  json:"input_tokens"`
+	OutputTokens int64     `bson:"output_tokens" json:"output_tokens"`
+	TotalTokens  int64     `bson:"total_tokens"  json:"total_tokens"`
+	EstimatedUSD float64   `bson:"estimated_usd" json:"estimated_usd"`
+	DurationSecs float64   `bson:"duration_secs" json:"duration_secs"`
 }
 
 type Job struct {
@@ -43,6 +59,7 @@ type Job struct {
 	RepositoryID string     `bson:"repository_id"`
 	Prompt       string     `bson:"prompt"`
 	Status       JobStatus  `bson:"status"`
+	AgentType    AgentType  `bson:"agent_type"`
 	BranchName   string     `bson:"branch_name"`
 	PRUrl        string     `bson:"pr_url,omitempty"`
 	Logs         []LogEntry `bson:"logs,omitempty"`
