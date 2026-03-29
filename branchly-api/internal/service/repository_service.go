@@ -19,8 +19,10 @@ import (
 )
 
 var (
-	ErrNotFound         = errors.New("not found")
-	ErrAlreadyConnected = errors.New("repository already connected")
+	ErrNotFound          = errors.New("not found")
+	ErrAlreadyConnected  = errors.New("repository already connected")
+	ErrRepositoryNotFound = errors.New("repository not found")
+	ErrRateLimitExceeded  = errors.New("active jobs limit reached")
 )
 
 type RepositoryService struct {

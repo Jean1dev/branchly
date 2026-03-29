@@ -21,6 +21,9 @@ services:
       retries: 5
       start_period: 10s
 
+  # SECURITY: ENCRYPTION_KEY must be identical in both branchly-api and
+  # branchly-runner. The API encrypts GitHub tokens; the runner decrypts them.
+  # Generate a valid key with: openssl rand -hex 32
   branchly-api:
     build:
       context: ./branchly-api

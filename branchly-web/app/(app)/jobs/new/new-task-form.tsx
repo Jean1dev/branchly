@@ -5,6 +5,7 @@ import { PageHeader } from "@/components/layout/page-header";
 import { type ApiRepository, unwrapApiData } from "@/lib/map-api";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { AGENTS, type AgentType } from "@/types";
 import { ChevronDown } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -20,6 +21,7 @@ export function NewTaskForm() {
   const [repoMenuOpen, setRepoMenuOpen] = useState(false);
   const repoPickerRef = useRef<HTMLDivElement>(null);
   const [prompt, setPrompt] = useState("");
+  const [selectedAgent, setSelectedAgent] = useState<AgentType>("claude-code");
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
@@ -79,6 +81,7 @@ export function NewTaskForm() {
             body: JSON.stringify({
               repository_id: repositoryId,
               prompt: prompt.trim(),
+              agent_type: selectedAgent,
             }),
           })
             .then(async (res) => {
@@ -89,6 +92,48 @@ export function NewTaskForm() {
             .finally(() => setSubmitting(false));
         }}
       >
+        {/* Agent selection */}
+        <div className="space-y-2">
+          <p className="text-sm font-medium">Agent</p>
+          <div className="grid grid-cols-2 gap-3">
+            {AGENTS.map((agent) => {
+              const active = selectedAgent === agent.id;
+              return (
+                <button
+                  key={agent.id}
+                  type="button"
+                  onClick={() => setSelectedAgent(agent.id)}
+                  className={cn(
+                    "rounded-lg border p-4 text-left transition-colors focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-black/10 dark:focus-visible:ring-white/[0.12]",
+                    active
+                      ? "border-2 border-foreground bg-gray-50 dark:bg-gray-900"
+                      : "border border-gray-200 hover:border-gray-400 dark:border-gray-800 dark:hover:border-gray-600"
+                  )}
+                  aria-pressed={active}
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <div>
+                      <p className="text-sm font-semibold">{agent.name}</p>
+                      <p className="text-xs text-gray-500 dark:text-gray-400">
+                        {agent.provider}
+                      </p>
+                    </div>
+                    {agent.badge && (
+                      <span className="shrink-0 rounded bg-green-100 px-1.5 py-0.5 text-[10px] font-medium text-green-700 dark:bg-green-900/30 dark:text-green-400">
+                        {agent.badge}
+                      </span>
+                    )}
+                  </div>
+                  <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">
+                    {agent.description}
+                  </p>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Repository selection */}
         <div className="space-y-2">
           <div id="repository-label" className="text-sm font-medium">
             Repository
@@ -173,6 +218,8 @@ export function NewTaskForm() {
             ) : null}
           </div>
         </div>
+
+        {/* Prompt */}
         <div className="space-y-2">
           <label htmlFor="prompt" className="text-sm font-medium">
             Describe what you want to build

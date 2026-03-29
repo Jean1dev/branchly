@@ -1,5 +1,24 @@
 export type JobStatus = "pending" | "running" | "completed" | "failed";
 
+export type AgentType = "claude-code" | "gemini";
+
+export const AGENTS = [
+  {
+    id: "claude-code" as AgentType,
+    name: "Claude Code",
+    provider: "Anthropic",
+    description: "Best quality. Uses your Anthropic API key.",
+    badge: null,
+  },
+  {
+    id: "gemini" as AgentType,
+    name: "Gemini CLI",
+    provider: "Google",
+    description: "Free tier available. Great for testing.",
+    badge: "Free tier",
+  },
+] as const;
+
 export type JobLogLevel = "info" | "success" | "warning" | "error";
 
 export interface User {
@@ -19,16 +38,28 @@ export interface Repository {
   jobsCount: number;
 }
 
+export interface JobCost {
+  inputTokens: number;
+  outputTokens: number;
+  totalTokens: number;
+  estimatedUSD: number;
+  modelUsed: string;
+  durationSecs: number;
+  isEstimate: boolean;
+}
+
 export interface Job {
   id: string;
   repositoryId: string;
   repositoryName: string;
   prompt: string;
   status: JobStatus;
+  agentType: AgentType;
   branchName: string;
   prUrl: string | null;
   createdAt: string;
   completedAt: string | null;
+  cost: JobCost | null;
 }
 
 export interface JobLog {

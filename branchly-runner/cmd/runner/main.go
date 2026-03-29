@@ -11,7 +11,9 @@ import (
 	"syscall"
 	"time"
 
+	agentpkg "github.com/branchly/branchly-runner/internal/agent"
 	"github.com/branchly/branchly-runner/internal/agent/claudecode"
+	"github.com/branchly/branchly-runner/internal/agent/gemini"
 	"github.com/branchly/branchly-runner/internal/config"
 	"github.com/branchly/branchly-runner/internal/executor"
 	"github.com/branchly/branchly-runner/internal/handler"
@@ -31,7 +33,10 @@ func main() {
 	}
 
 	if strings.TrimSpace(os.Getenv("ANTHROPIC_API_KEY")) == "" {
-		slog.Warn("ANTHROPIC_API_KEY is empty; Claude Code will fail until the runner process receives a valid API key (e.g. branchly-runner/.env or compose environment)")
+		slog.Warn("ANTHROPIC_API_KEY is empty; Claude Code jobs will fail until a valid key is provided")
+	}
+	if strings.TrimSpace(os.Getenv("GEMINI_API_KEY")) == "" {
+		slog.Warn("GEMINI_API_KEY is empty; Gemini jobs will fail until a valid key is provided")
 	}
 
 	ctx := context.Background()
@@ -44,8 +49,13 @@ func main() {
 	db := mongoClient.Database(cfg.MongoDatabase)
 	jobRepo := repository.NewJobRepository(db)
 	jobLogRepo := repository.NewJobLogRepository(db)
-	agent := claudecode.New()
-	ex := executor.NewExecutor(agent, jobRepo, jobLogRepo, cfg.EncryptionKey, cfg.WorkDir)
+	repoRepo := repository.NewRepoRepository(db)
+
+	claudeAgent := claudecode.New()
+	geminiAgent := gemini.New()
+	agentFactory := agentpkg.NewFactory(claudeAgent, geminiAgent)
+
+	ex := executor.NewExecutor(agentFactory, jobRepo, jobLogRepo, repoRepo, cfg.EncryptionKey, cfg.WorkDir)
 	p := pool.New(cfg.MaxConcurrentJobs)
 	jobsH := handler.NewJobsHandler(cfg.RunnerSecret, p, ex)
 

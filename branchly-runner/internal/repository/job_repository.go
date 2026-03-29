@@ -44,6 +44,22 @@ func (r *JobRepository) UpdateJobFields(ctx context.Context, id string, status d
 	return nil
 }
 
+func (r *JobRepository) SetCost(ctx context.Context, id string, cost *domain.JobCost) error {
+	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+	res, err := r.coll.UpdateOne(ctx, bson.M{"_id": id}, bson.M{"$set": bson.M{
+		"cost":       cost,
+		"updated_at": time.Now().UTC(),
+	}})
+	if err != nil {
+		return fmt.Errorf("job repository: set cost: %w", err)
+	}
+	if res.MatchedCount == 0 {
+		return fmt.Errorf("job repository: job not found")
+	}
+	return nil
+}
+
 func (r *JobRepository) VerifyJobOwner(ctx context.Context, id, userID string) error {
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()

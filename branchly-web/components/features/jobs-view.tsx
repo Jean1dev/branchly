@@ -5,12 +5,22 @@ import { EmptyState } from "@/components/features/empty-state";
 import { PageHeader } from "@/components/layout/page-header";
 import { Button } from "@/components/ui/button";
 import { formatDurationMs, truncate } from "@/lib/utils";
-import type { Job, JobStatus } from "@/types";
+import type { AgentType, Job, JobStatus } from "@/types";
+import { AGENTS } from "@/types";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useMemo } from "react";
 
 const PAGE_SIZE = 10;
+
+function AgentBadge({ agentType }: { agentType: AgentType }) {
+  const agent = AGENTS.find((a) => a.id === agentType) ?? AGENTS[0];
+  return (
+    <span className="inline-flex items-center gap-1 rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-700 dark:bg-gray-800 dark:text-gray-300">
+      {agent.name}
+    </span>
+  );
+}
 
 const tabs: { id: "all" | JobStatus; label: string }[] = [
   { id: "all", label: "All" },
@@ -112,6 +122,9 @@ export function JobsView({ jobs }: JobsViewProps) {
                     Task
                   </th>
                   <th scope="col" className="px-4 py-3 font-medium">
+                    Agent
+                  </th>
+                  <th scope="col" className="px-4 py-3 font-medium">
                     Status
                   </th>
                   <th scope="col" className="px-4 py-3 font-medium">
@@ -133,6 +146,9 @@ export function JobsView({ jobs }: JobsViewProps) {
                     </td>
                     <td className="max-w-[280px] px-4 py-3 text-gray-600 dark:text-gray-300">
                       {truncate(job.prompt, 72)}
+                    </td>
+                    <td className="px-4 py-3">
+                      <AgentBadge agentType={job.agentType} />
                     </td>
                     <td className="px-4 py-3">
                       <StatusBadge status={job.status} />

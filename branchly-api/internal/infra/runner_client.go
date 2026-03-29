@@ -14,10 +14,12 @@ import (
 type DispatchJobPayload struct {
 	JobID          string `json:"job_id"`
 	UserID         string `json:"user_id"`
+	RepositoryID   string `json:"repository_id"`
 	RepositoryName string `json:"repository_name"`
 	DefaultBranch  string `json:"default_branch"`
 	Prompt         string `json:"prompt"`
 	EncryptedToken string `json:"encrypted_token"`
+	AgentType      string `json:"agent_type"`
 }
 
 type RunnerClient struct {

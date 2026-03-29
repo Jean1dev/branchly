@@ -89,6 +89,19 @@ func (r *mongoJobRepository) FindByUserID(ctx context.Context, userID string, st
 	return list, nil
 }
 
+func (r *mongoJobRepository) CountActiveByUserID(ctx context.Context, userID string) (int64, error) {
+	ctx, cancel := context.WithTimeout(ctx, 3*time.Second)
+	defer cancel()
+	n, err := r.coll.CountDocuments(ctx, bson.M{
+		"user_id": userID,
+		"status":  bson.M{"$in": []string{string(domain.JobStatusPending), string(domain.JobStatusRunning)}},
+	})
+	if err != nil {
+		return 0, fmt.Errorf("job repository: count active: %w", err)
+	}
+	return n, nil
+}
+
 func (r *mongoJobRepository) UpdateStatus(ctx context.Context, id string, status domain.JobStatus) error {
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
