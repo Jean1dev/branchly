@@ -15,7 +15,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends git ca-certific
   && rm -rf /var/lib/apt/lists/*
 COPY --from=agents /usr/local/lib/node_modules /usr/local/lib/node_modules
 COPY --from=agents /usr/local/bin/claude /usr/local/bin/claude
-COPY --from=agents /usr/local/bin/gemini /usr/local/bin/gemini
+# Docker COPY dereferences symlinks, which breaks relative imports in the gemini bin.
+# Recreate the symlink from the package.json bin entry so imports resolve correctly.
+RUN node -e "const p=require('/usr/local/lib/node_modules/@google/gemini-cli/package.json'),path=require('path'),fs=require('fs');const bins=typeof p.bin==='string'?{gemini:p.bin}:(p.bin||{});Object.entries(bins).forEach(([n,r])=>{const t=path.resolve('/usr/local/lib/node_modules/@google/gemini-cli',r);try{fs.chmodSync(t,0o755)}catch(e){};fs.symlinkSync(t,'/usr/local/bin/'+n);});"
 COPY --from=build /runner /runner
 EXPOSE 8081
 ENTRYPOINT ["/runner"]
