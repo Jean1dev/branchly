@@ -2,11 +2,8 @@ package service
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
-	"net/http"
 	"slices"
 	"strings"
 	"time"
@@ -14,37 +11,42 @@ import (
 	"github.com/branchly/branchly-api/internal/config"
 	"github.com/branchly/branchly-api/internal/domain"
 	"github.com/branchly/branchly-api/internal/infra"
+	"github.com/branchly/branchly-api/internal/repository"
 	"github.com/google/uuid"
 	"go.mongodb.org/mongo-driver/mongo"
 )
 
 var (
-	ErrNotFound          = errors.New("not found")
-	ErrAlreadyConnected  = errors.New("repository already connected")
+	ErrNotFound           = errors.New("not found")
+	ErrAlreadyConnectedRepo = errors.New("repository already connected")
 	ErrRepositoryNotFound = errors.New("repository not found")
 	ErrRateLimitExceeded  = errors.New("active jobs limit reached")
 )
 
+// ProviderRepo is a normalised repository from any Git provider.
+type ProviderRepo struct {
+	ExternalID    string
+	FullName      string
+	CloneURL      string
+	DefaultBranch string
+	Language      string
+	Provider      domain.GitProvider
+}
+
 type RepositoryService struct {
-	cfg  *config.Config
-	users domain.UserRepository
-	repos domain.ConnectedRepositoryRepository
+	cfg          *config.Config
+	integrations repository.IntegrationRepository
+	repos        domain.ConnectedRepositoryRepository
+	integSvc     *IntegrationService
 }
 
-func NewRepositoryService(cfg *config.Config, users domain.UserRepository, repos domain.ConnectedRepositoryRepository) *RepositoryService {
-	return &RepositoryService{cfg: cfg, users: users, repos: repos}
-}
-
-func (s *RepositoryService) githubHTTPClient(ctx context.Context) *http.Client {
-	return &http.Client{Timeout: 8 * time.Second}
-}
-
-func (s *RepositoryService) decryptUserToken(u *domain.User) (string, error) {
-	tok, err := infra.Decrypt(u.EncryptedToken, s.cfg.EncryptionKey)
-	if err != nil {
-		return "", fmt.Errorf("repository service: decrypt token: %w", err)
-	}
-	return tok, nil
+func NewRepositoryService(
+	cfg *config.Config,
+	integrations repository.IntegrationRepository,
+	repos domain.ConnectedRepositoryRepository,
+	integSvc *IntegrationService,
+) *RepositoryService {
+	return &RepositoryService{cfg: cfg, integrations: integrations, repos: repos, integSvc: integSvc}
 }
 
 func (s *RepositoryService) ListConnected(ctx context.Context, userID string) ([]*domain.Repository, error) {
@@ -55,30 +57,47 @@ func (s *RepositoryService) ListConnected(ctx context.Context, userID string) ([
 	return list, nil
 }
 
+// ConnectRepositoryInput carries the data needed to connect a repository.
 type ConnectRepositoryInput struct {
-	GithubRepoID  int64
+	IntegrationID string
+	ExternalID    string
 	FullName      string
+	CloneURL      string
 	DefaultBranch string
 	Language      string
+	Provider      domain.GitProvider
 }
 
 func (s *RepositoryService) Connect(ctx context.Context, userID string, in ConnectRepositoryInput) (*domain.Repository, error) {
+	ig, err := s.integrations.FindByID(ctx, in.IntegrationID)
+	if err != nil {
+		return nil, fmt.Errorf("repository service: connect find integration: %w", err)
+	}
+	if ig == nil || ig.UserID != userID {
+		return nil, ErrNotFound
+	}
+
 	defaultBranch := strings.TrimSpace(in.DefaultBranch)
 	if defaultBranch == "" {
 		defaultBranch = "main"
 	}
-	existing, err := s.repos.FindByUserAndGithubRepoID(ctx, userID, in.GithubRepoID)
+
+	existing, err := s.repos.FindByUserExternalAndProvider(ctx, userID, in.ExternalID, in.Provider)
 	if err != nil {
-		return nil, fmt.Errorf("repository service: connect find: %w", err)
+		return nil, fmt.Errorf("repository service: connect find existing: %w", err)
 	}
 	if existing != nil {
-		return nil, ErrAlreadyConnected
+		return nil, ErrAlreadyConnectedRepo
 	}
+
 	r := &domain.Repository{
 		ID:            uuid.New().String(),
 		UserID:        userID,
-		GithubRepoID:  in.GithubRepoID,
+		IntegrationID: in.IntegrationID,
+		Provider:      in.Provider,
+		ExternalID:    in.ExternalID,
 		FullName:      in.FullName,
+		CloneURL:      in.CloneURL,
 		DefaultBranch: defaultBranch,
 		Language:      in.Language,
 		ConnectedAt:   time.Now().UTC(),
@@ -106,77 +125,53 @@ func (s *RepositoryService) Disconnect(ctx context.Context, userID, repoID strin
 	return nil
 }
 
-type githubRepoPermissions struct {
-	Push bool `json:"push"`
-}
-
-type GitHubRepoListItem struct {
-	ID            int64                  `json:"id"`
-	Name          string                 `json:"name"`
-	FullName      string                 `json:"full_name"`
-	DefaultBranch string                 `json:"default_branch"`
-	Language      string                 `json:"language"`
-	Private       bool                   `json:"private"`
-	Permissions   *githubRepoPermissions `json:"permissions"`
-}
-
-func (s *RepositoryService) ListGitHubAvailable(ctx context.Context, userID string) ([]GitHubRepoListItem, error) {
-	u, err := s.users.FindByID(ctx, userID)
+// ListFromProvider lists repositories available to connect from a given integration.
+// Repos already connected via this integration are filtered out.
+func (s *RepositoryService) ListFromProvider(ctx context.Context, userID, integrationID string) ([]ProviderRepo, error) {
+	ig, err := s.integrations.FindByID(ctx, integrationID)
 	if err != nil {
-		return nil, fmt.Errorf("repository service: user: %w", err)
+		return nil, fmt.Errorf("repository service: list from provider find integration: %w", err)
 	}
-	if u == nil {
+	if ig == nil || ig.UserID != userID {
 		return nil, ErrNotFound
 	}
-	token, err := s.decryptUserToken(u)
+
+	token, err := infra.Decrypt(ig.EncryptedToken, s.cfg.EncryptionKey)
 	if err != nil {
-		return nil, err
-	}
-	reqCtx, cancel := context.WithTimeout(ctx, 8*time.Second)
-	defer cancel()
-	req, err := http.NewRequestWithContext(reqCtx, http.MethodGet, "https://api.github.com/user/repos?per_page=100&sort=updated", nil)
-	if err != nil {
-		return nil, fmt.Errorf("repository service: request: %w", err)
-	}
-	req.Header.Set("Authorization", "Bearer "+token)
-	req.Header.Set("Accept", "application/vnd.github+json")
-	res, err := s.githubHTTPClient(ctx).Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("repository service: github repos: %w", err)
-	}
-	defer res.Body.Close()
-	if res.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("repository service: github repos status %d", res.StatusCode)
-	}
-	body, err := io.ReadAll(io.LimitReader(res.Body, 8<<20))
-	if err != nil {
-		return nil, fmt.Errorf("repository service: read body: %w", err)
-	}
-	var out []GitHubRepoListItem
-	if err := json.Unmarshal(body, &out); err != nil {
-		return nil, fmt.Errorf("repository service: decode repos: %w", err)
+		return nil, fmt.Errorf("repository service: decrypt token: %w", err)
 	}
 
-	connected, err := s.repos.FindByUserID(ctx, userID)
+	var all []ProviderRepo
+	switch ig.Provider {
+	case domain.GitProviderGitHub:
+		all, err = s.integSvc.listGitHubRepos(ctx, token)
+	case domain.GitProviderGitLab:
+		all, err = s.integSvc.listGitLabProjects(ctx, token)
+	default:
+		return nil, fmt.Errorf("repository service: unsupported provider %s", ig.Provider)
+	}
+	if err != nil {
+		return nil, fmt.Errorf("repository service: list from provider fetch: %w", err)
+	}
+
+	// Filter already-connected repos for this integration.
+	connected, err := s.repos.FindByIntegrationID(ctx, integrationID)
 	if err != nil {
 		return nil, fmt.Errorf("repository service: list connected: %w", err)
 	}
-	already := make(map[int64]struct{}, len(connected))
+	alreadyConnected := make(map[string]struct{}, len(connected))
 	for _, r := range connected {
-		already[r.GithubRepoID] = struct{}{}
+		alreadyConnected[r.ExternalID] = struct{}{}
 	}
 
-	filtered := make([]GitHubRepoListItem, 0, len(out))
-	for _, item := range out {
-		if _, ok := already[item.ID]; ok {
-			continue
+	filtered := make([]ProviderRepo, 0, len(all))
+	for _, pr := range all {
+		if _, ok := alreadyConnected[pr.ExternalID]; !ok {
+			filtered = append(filtered, pr)
 		}
-		if item.Permissions != nil && !item.Permissions.Push {
-			continue
-		}
-		filtered = append(filtered, item)
 	}
-	slices.SortFunc(filtered, func(a, b GitHubRepoListItem) int {
+
+	slices.SortFunc(filtered, func(a, b ProviderRepo) int {
 		return strings.Compare(strings.ToLower(a.FullName), strings.ToLower(b.FullName))
 	})
 	return filtered, nil

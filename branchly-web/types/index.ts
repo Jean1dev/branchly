@@ -2,6 +2,8 @@ export type JobStatus = "pending" | "running" | "completed" | "failed";
 
 export type AgentType = "claude-code" | "gemini";
 
+export type GitProvider = "github" | "gitlab";
+
 export const AGENTS = [
   {
     id: "claude-code" as AgentType,
@@ -29,13 +31,33 @@ export interface User {
   githubUsername: string;
 }
 
+export interface GitIntegration {
+  id: string;
+  provider: GitProvider;
+  tokenType: "oauth" | "pat";
+  connectedAt: string;
+}
+
 export interface Repository {
   id: string;
+  integrationId: string;
+  provider: GitProvider;
+  externalId: string;
   fullName: string;
+  cloneUrl: string;
   defaultBranch: string;
   language: string;
   lastJobAt: string;
   jobsCount: number;
+}
+
+export interface ProviderRepo {
+  externalId: string;
+  fullName: string;
+  cloneUrl: string;
+  defaultBranch: string;
+  language: string;
+  provider: GitProvider;
 }
 
 export interface JobCost {
@@ -52,6 +74,7 @@ export interface Job {
   id: string;
   repositoryId: string;
   repositoryName: string;
+  repositoryProvider: GitProvider;
   prompt: string;
   status: JobStatus;
   agentType: AgentType;

@@ -57,7 +57,7 @@ type mockRepoRepo struct {
 	repo *domain.Repository
 }
 
-func (m *mockRepoRepo) Create(_ context.Context, _ *domain.Repository) error        { return nil }
+func (m *mockRepoRepo) Create(_ context.Context, _ *domain.Repository) error { return nil }
 func (m *mockRepoRepo) FindByID(_ context.Context, _ string) (*domain.Repository, error) {
 	return m.repo, nil
 }
@@ -65,18 +65,10 @@ func (m *mockRepoRepo) FindByUserID(_ context.Context, _ string) ([]*domain.Repo
 	return nil, nil
 }
 func (m *mockRepoRepo) Delete(_ context.Context, _ string) error { return nil }
-func (m *mockRepoRepo) FindByUserAndGithubRepoID(_ context.Context, _ string, _ int64) (*domain.Repository, error) {
+func (m *mockRepoRepo) FindByUserExternalAndProvider(_ context.Context, _ string, _ string, _ domain.GitProvider) (*domain.Repository, error) {
 	return nil, nil
 }
-
-type mockUserRepo struct {
-	user *domain.User
-}
-
-func (m *mockUserRepo) FindByID(_ context.Context, _ string) (*domain.User, error) {
-	return m.user, nil
-}
-func (m *mockUserRepo) UpsertByProvider(_ context.Context, _ *domain.User) (*domain.User, error) {
+func (m *mockRepoRepo) FindByIntegrationID(_ context.Context, _ string) ([]*domain.Repository, error) {
 	return nil, nil
 }
 
@@ -99,40 +91,38 @@ func (m *mockRunnerClient) DispatchJob(_ context.Context, payload infra.Dispatch
 func newTestService(
 	activeJobs int64,
 	repo *domain.Repository,
-	user *domain.User,
 ) *JobService {
 	cfg := &config.Config{MaxActiveJobsPerUser: 3}
 	jobs := &mockJobRepo{activeCount: activeJobs}
 	repos := &mockRepoRepo{repo: repo}
-	users := &mockUserRepo{user: user}
 	svc := &JobService{
 		cfg:     cfg,
 		jobs:    jobs,
 		jobLogs: &mockJobLogRepo{},
 		repos:   repos,
-		users:   users,
-		runner:  &mockRunnerClient{}, // always succeeds; dispatch errors not tested here
+		runner:  &mockRunnerClient{},
 	}
 	return svc
 }
 
 func ownedRepo(userID string) *domain.Repository {
-	return &domain.Repository{ID: "repo-1", UserID: userID, FullName: "owner/repo"}
-}
-
-func activeUser(userID string) *domain.User {
-	return &domain.User{ID: userID, EncryptedToken: "enc"}
+	return &domain.Repository{
+		ID:            "repo-1",
+		UserID:        userID,
+		FullName:      "owner/repo",
+		IntegrationID: "integ-1",
+		Provider:      domain.GitProviderGitHub,
+	}
 }
 
 // ---- tests: rate limiting ----
 
 func TestCreate_ZeroActiveJobs_Succeeds(t *testing.T) {
-	svc := newTestService(0, ownedRepo("user-1"), activeUser("user-1"))
+	svc := newTestService(0, ownedRepo("user-1"))
 	_, err := svc.Create(context.Background(), "user-1", CreateJobInput{
 		RepositoryID: "repo-1",
 		Prompt:       "add feature",
 	})
-	// dispatch will fail (runner is nil) but we only care about pre-dispatch validation
 	if errors.Is(err, ErrRateLimitExceeded) {
 		t.Error("expected no rate limit error with 0 active jobs")
 	}
@@ -142,7 +132,7 @@ func TestCreate_ZeroActiveJobs_Succeeds(t *testing.T) {
 }
 
 func TestCreate_TwoActiveJobs_Succeeds(t *testing.T) {
-	svc := newTestService(2, ownedRepo("user-1"), activeUser("user-1"))
+	svc := newTestService(2, ownedRepo("user-1"))
 	_, err := svc.Create(context.Background(), "user-1", CreateJobInput{
 		RepositoryID: "repo-1",
 		Prompt:       "add feature",
@@ -153,7 +143,7 @@ func TestCreate_TwoActiveJobs_Succeeds(t *testing.T) {
 }
 
 func TestCreate_ThreeActiveJobs_ReturnsErrRateLimitExceeded(t *testing.T) {
-	svc := newTestService(3, ownedRepo("user-1"), activeUser("user-1"))
+	svc := newTestService(3, ownedRepo("user-1"))
 	_, err := svc.Create(context.Background(), "user-1", CreateJobInput{
 		RepositoryID: "repo-1",
 		Prompt:       "add feature",
@@ -164,15 +154,11 @@ func TestCreate_ThreeActiveJobs_ReturnsErrRateLimitExceeded(t *testing.T) {
 }
 
 func TestCreate_DifferentUsersDoNotShareLimit(t *testing.T) {
-	// user-2 has 3 active jobs; user-1 has 0 — user-1 should succeed
-	jobsMock := &mockJobRepo{activeCount: 0} // user-1 has 0 active jobs
-	cfg := &config.Config{MaxActiveJobsPerUser: 3}
 	svc := &JobService{
-		cfg:     cfg,
-		jobs:    jobsMock,
+		cfg:     &config.Config{MaxActiveJobsPerUser: 3},
+		jobs:    &mockJobRepo{activeCount: 0},
 		jobLogs: &mockJobLogRepo{},
 		repos:   &mockRepoRepo{repo: ownedRepo("user-1")},
-		users:   &mockUserRepo{user: activeUser("user-1")},
 		runner:  &mockRunnerClient{},
 	}
 
@@ -186,9 +172,7 @@ func TestCreate_DifferentUsersDoNotShareLimit(t *testing.T) {
 }
 
 func TestCreate_CompletedOrFailedJobsDoNotCountTowardLimit(t *testing.T) {
-	// CountActiveByUserID only counts pending/running — the mock returns 2
-	// (simulating 2 pending/running, with many completed/failed ignored)
-	svc := newTestService(2, ownedRepo("user-1"), activeUser("user-1"))
+	svc := newTestService(2, ownedRepo("user-1"))
 	_, err := svc.Create(context.Background(), "user-1", CreateJobInput{
 		RepositoryID: "repo-1",
 		Prompt:       "another task",
@@ -201,7 +185,7 @@ func TestCreate_CompletedOrFailedJobsDoNotCountTowardLimit(t *testing.T) {
 // ---- tests: ownership validation ----
 
 func TestCreate_OwnRepoSucceeds(t *testing.T) {
-	svc := newTestService(0, ownedRepo("user-1"), activeUser("user-1"))
+	svc := newTestService(0, ownedRepo("user-1"))
 	_, err := svc.Create(context.Background(), "user-1", CreateJobInput{
 		RepositoryID: "repo-1",
 		Prompt:       "fix bug",
@@ -212,8 +196,7 @@ func TestCreate_OwnRepoSucceeds(t *testing.T) {
 }
 
 func TestCreate_OtherUsersRepoReturnsErrRepositoryNotFound(t *testing.T) {
-	// repo belongs to user-2, but user-1 is requesting
-	svc := newTestService(0, ownedRepo("user-2"), activeUser("user-1"))
+	svc := newTestService(0, ownedRepo("user-2"))
 	_, err := svc.Create(context.Background(), "user-1", CreateJobInput{
 		RepositoryID: "repo-1",
 		Prompt:       "fix bug",
@@ -224,7 +207,7 @@ func TestCreate_OtherUsersRepoReturnsErrRepositoryNotFound(t *testing.T) {
 }
 
 func TestCreate_NonExistentRepoReturnsErrRepositoryNotFound(t *testing.T) {
-	svc := newTestService(0, nil /* repo not found */, activeUser("user-1"))
+	svc := newTestService(0, nil /* repo not found */)
 	_, err := svc.Create(context.Background(), "user-1", CreateJobInput{
 		RepositoryID: "nonexistent",
 		Prompt:       "fix bug",
@@ -243,7 +226,6 @@ func TestCreate_AgentTypeIsIncludedInDispatchPayload(t *testing.T) {
 		jobs:    &mockJobRepo{},
 		jobLogs: &mockJobLogRepo{},
 		repos:   &mockRepoRepo{repo: ownedRepo("user-1")},
-		users:   &mockUserRepo{user: activeUser("user-1")},
 		runner:  runner,
 	}
 	_, err := svc.Create(context.Background(), "user-1", CreateJobInput{
@@ -260,6 +242,33 @@ func TestCreate_AgentTypeIsIncludedInDispatchPayload(t *testing.T) {
 	}
 }
 
+func TestCreate_IntegrationIDInDispatchPayload(t *testing.T) {
+	runner := &mockRunnerClient{}
+	repo := ownedRepo("user-1")
+	repo.IntegrationID = "integ-abc"
+	repo.Provider = domain.GitProviderGitHub
+	svc := &JobService{
+		cfg:     &config.Config{MaxActiveJobsPerUser: 3},
+		jobs:    &mockJobRepo{},
+		jobLogs: &mockJobLogRepo{},
+		repos:   &mockRepoRepo{repo: repo},
+		runner:  runner,
+	}
+	_, err := svc.Create(context.Background(), "user-1", CreateJobInput{
+		RepositoryID: "repo-1",
+		Prompt:       "add feature",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if runner.lastPayload.IntegrationID != "integ-abc" {
+		t.Errorf("expected IntegrationID %q, got %q", "integ-abc", runner.lastPayload.IntegrationID)
+	}
+	if runner.lastPayload.Provider != string(domain.GitProviderGitHub) {
+		t.Errorf("expected Provider %q, got %q", domain.GitProviderGitHub, runner.lastPayload.Provider)
+	}
+}
+
 func TestCreate_AgentTypeIsPersistedOnJob(t *testing.T) {
 	jobsMock := &mockJobRepo{}
 	svc := &JobService{
@@ -267,7 +276,6 @@ func TestCreate_AgentTypeIsPersistedOnJob(t *testing.T) {
 		jobs:    jobsMock,
 		jobLogs: &mockJobLogRepo{},
 		repos:   &mockRepoRepo{repo: ownedRepo("user-1")},
-		users:   &mockUserRepo{user: activeUser("user-1")},
 		runner:  &mockRunnerClient{},
 	}
 	_, err := svc.Create(context.Background(), "user-1", CreateJobInput{

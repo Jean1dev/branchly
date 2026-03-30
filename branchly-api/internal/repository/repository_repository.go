@@ -79,16 +79,43 @@ func (r *mongoConnectedRepository) Delete(ctx context.Context, id string) error 
 	return nil
 }
 
-func (r *mongoConnectedRepository) FindByUserAndGithubRepoID(ctx context.Context, userID string, githubRepoID int64) (*domain.Repository, error) {
+func (r *mongoConnectedRepository) FindByUserExternalAndProvider(ctx context.Context, userID, externalID string, provider domain.GitProvider) (*domain.Repository, error) {
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 	var out domain.Repository
-	err := r.coll.FindOne(ctx, bson.M{"user_id": userID, "github_repo_id": githubRepoID}).Decode(&out)
+	err := r.coll.FindOne(ctx, bson.M{
+		"user_id":     userID,
+		"external_id": externalID,
+		"provider":    provider,
+	}).Decode(&out)
 	if err != nil {
 		if errors.Is(err, mongo.ErrNoDocuments) {
 			return nil, nil
 		}
-		return nil, fmt.Errorf("repository repository: find github id: %w", err)
+		return nil, fmt.Errorf("repository repository: find by user+external+provider: %w", err)
 	}
 	return &out, nil
+}
+
+func (r *mongoConnectedRepository) FindByIntegrationID(ctx context.Context, integrationID string) ([]*domain.Repository, error) {
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	cur, err := r.coll.Find(ctx, bson.M{"integration_id": integrationID})
+	if err != nil {
+		return nil, fmt.Errorf("repository repository: find by integration: %w", err)
+	}
+	defer cur.Close(ctx)
+	var list []*domain.Repository
+	for cur.Next(ctx) {
+		var item domain.Repository
+		if err := cur.Decode(&item); err != nil {
+			return nil, fmt.Errorf("repository repository: decode: %w", err)
+		}
+		cp := item
+		list = append(list, &cp)
+	}
+	if err := cur.Err(); err != nil {
+		return nil, fmt.Errorf("repository repository: cursor: %w", err)
+	}
+	return list, nil
 }

@@ -21,11 +21,14 @@ func (a AgentType) IsValid() bool {
 }
 
 // Repository is the minimal projection of a connected repository needed by
-// the runner for ownership validation. The full document lives in the API.
+// the runner for ownership validation and cloning.
 type Repository struct {
-	ID       string `bson:"_id"`
-	UserID   string `bson:"user_id"`
-	FullName string `bson:"full_name"`
+	ID            string      `bson:"_id"`
+	UserID        string      `bson:"user_id"`
+	IntegrationID string      `bson:"integration_id"`
+	Provider      GitProvider `bson:"provider"`
+	FullName      string      `bson:"full_name"`
+	CloneURL      string      `bson:"clone_url"`
 }
 
 // RepositoryRepository provides read-only access to the repositories collection.

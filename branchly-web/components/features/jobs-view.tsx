@@ -3,6 +3,7 @@
 import { StatusBadge } from "@/components/features/status-badge";
 import { EmptyState } from "@/components/features/empty-state";
 import { PageHeader } from "@/components/layout/page-header";
+import { ProviderBadge } from "@/components/ui/provider-badge";
 import { Button } from "@/components/ui/button";
 import { formatDurationMs, truncate } from "@/lib/utils";
 import type { AgentType, Job, JobStatus } from "@/types";
@@ -141,8 +142,11 @@ export function JobsView({ jobs }: JobsViewProps) {
                     key={job.id}
                     className="border-b border-gray-200 last:border-0 dark:border-gray-800"
                   >
-                    <td className="px-4 py-3 font-mono text-xs">
-                      {job.repositoryName}
+                    <td className="px-4 py-3">
+                      <span className="flex items-center gap-1.5">
+                        <ProviderBadge provider={job.repositoryProvider} />
+                        <span className="font-mono text-xs">{job.repositoryName}</span>
+                      </span>
                     </td>
                     <td className="max-w-[280px] px-4 py-3 text-gray-600 dark:text-gray-300">
                       {truncate(job.prompt, 72)}

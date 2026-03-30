@@ -8,13 +8,13 @@ import (
 
 	"github.com/branchly/branchly-api/internal/config"
 	"github.com/branchly/branchly-api/internal/domain"
-	"github.com/branchly/branchly-api/internal/infra"
 	"github.com/golang-jwt/jwt/v5"
 )
 
 type AuthService struct {
-	cfg   *config.Config
-	users domain.UserRepository
+	cfg      *config.Config
+	users    domain.UserRepository
+	integSvc *IntegrationService
 }
 
 type jwtClaims struct {
@@ -23,18 +23,14 @@ type jwtClaims struct {
 	jwt.RegisteredClaims
 }
 
-func NewAuthService(cfg *config.Config, users domain.UserRepository) *AuthService {
-	return &AuthService{cfg: cfg, users: users}
+func NewAuthService(cfg *config.Config, users domain.UserRepository, integSvc *IntegrationService) *AuthService {
+	return &AuthService{cfg: cfg, users: users, integSvc: integSvc}
 }
 
 func (s *AuthService) UpsertFromInternalOAuth(
 	ctx context.Context,
 	providerID, email, name, avatarURL, githubToken string,
 ) (*domain.User, error) {
-	enc, err := infra.Encrypt(githubToken, s.cfg.EncryptionKey)
-	if err != nil {
-		return nil, fmt.Errorf("auth service: encrypt token: %w", err)
-	}
 	displayName := strings.TrimSpace(name)
 	if displayName == "" {
 		displayName = "GitHub user"
@@ -43,18 +39,24 @@ func (s *AuthService) UpsertFromInternalOAuth(
 	if em == "" {
 		em = fmt.Sprintf("github-%s@users.noreply.github.com", providerID)
 	}
+	// User document no longer stores the encrypted token — token lives in git_integrations.
 	u := &domain.User{
-		Provider:       "github",
-		ProviderID:     providerID,
-		Email:          em,
-		Name:           displayName,
-		AvatarURL:      strings.TrimSpace(avatarURL),
-		EncryptedToken: enc,
+		Provider:  "github",
+		ProviderID: providerID,
+		Email:     em,
+		Name:      displayName,
+		AvatarURL: strings.TrimSpace(avatarURL),
 	}
 	out, err := s.users.UpsertByProvider(ctx, u)
 	if err != nil {
 		return nil, fmt.Errorf("auth service: upsert user: %w", err)
 	}
+
+	// Always refresh the GitHub integration token on sign-in.
+	if _, err := s.integSvc.ConnectGitHub(ctx, out.ID, githubToken); err != nil {
+		return nil, fmt.Errorf("auth service: connect github: %w", err)
+	}
+
 	return out, nil
 }
 

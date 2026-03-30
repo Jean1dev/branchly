@@ -2,6 +2,7 @@ import { JobCostCard } from "@/components/features/job-cost-card";
 import { JobLogPanel } from "@/components/features/job-log-panel";
 import { StatusBadge } from "@/components/features/status-badge";
 import { Card } from "@/components/ui/card";
+import { ProviderBadge } from "@/components/ui/provider-badge";
 import { Separator } from "@/components/ui/separator";
 import { apiFetch } from "@/lib/api-client";
 import {
@@ -9,6 +10,7 @@ import {
   mapJobLog,
   unwrapApiData,
   type ApiJob,
+  type ApiRepository,
 } from "@/lib/map-api";
 import { formatDate, truncate } from "@/lib/utils";
 import { AGENTS } from "@/types";
@@ -26,13 +28,11 @@ export async function JobDetailContent({ id }: { id: string }) {
   const raw = unwrapApiData<ApiJob>(await res.json());
   const repoRes = await apiFetch("/repositories");
   const reposParsed = repoRes.ok
-    ? unwrapApiData<Array<{ id: string; full_name: string }>>(
-        await repoRes.json()
-      )
+    ? unwrapApiData<ApiRepository[]>(await repoRes.json())
     : [];
   const repos = Array.isArray(reposParsed) ? reposParsed : [];
-  const repoName = repos.find((r) => r.id === raw.repository_id)?.full_name;
-  const job = mapJob(raw, repoName);
+  const matchedRepo = repos.find((r) => r.id === raw.repository_id);
+  const job = mapJob(raw, matchedRepo?.full_name, matchedRepo?.provider);
   const logLines = (raw.logs ?? []).map(mapJobLog);
 
   return (
@@ -49,8 +49,9 @@ export async function JobDetailContent({ id }: { id: string }) {
         </ol>
       </nav>
       <header className="mb-8 space-y-3">
-        <p className="font-mono text-sm text-gray-500 dark:text-gray-400">
-          {job.repositoryName}
+        <p className="flex items-center gap-1.5 font-mono text-sm text-gray-500 dark:text-gray-400">
+          <ProviderBadge provider={job.repositoryProvider} />
+          <span>{job.repositoryName}</span>
         </p>
         <div className="flex flex-wrap items-center gap-3">
           <h1 className="text-xl font-semibold tracking-tight md:text-2xl">

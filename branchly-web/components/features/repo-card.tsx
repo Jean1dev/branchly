@@ -1,4 +1,5 @@
 import { RepoLanguageIcon } from "@/components/features/repo-language-icon";
+import { ProviderBadge } from "@/components/ui/provider-badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { formatDate } from "@/lib/utils";
@@ -14,9 +15,12 @@ export function RepoCard({ repo }: { repo: Repository }) {
           size="md"
         />
         <div className="min-w-0 space-y-1">
-          <p className="truncate font-mono text-sm font-semibold">
-            {repo.fullName}
-          </p>
+          <div className="flex items-center gap-1.5">
+            <ProviderBadge provider={repo.provider} />
+            <p className="truncate font-mono text-sm font-semibold">
+              {repo.fullName}
+            </p>
+          </div>
           <p className="text-sm text-gray-500 dark:text-gray-400">
             {repo.language} · {repo.jobsCount} jobs · Last job{" "}
             {formatDate(repo.lastJobAt)}

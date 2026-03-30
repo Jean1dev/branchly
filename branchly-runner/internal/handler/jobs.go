@@ -31,7 +31,8 @@ type postJobBody struct {
 	RepositoryName string `json:"repository_name" binding:"required"`
 	DefaultBranch  string `json:"default_branch"`
 	Prompt         string `json:"prompt" binding:"required"`
-	EncryptedToken string `json:"encrypted_token" binding:"required"`
+	IntegrationID  string `json:"integration_id" binding:"required"`
+	Provider       string `json:"provider" binding:"required"`
 	AgentType      string `json:"agent_type"`
 }
 
@@ -69,7 +70,8 @@ func (h *JobsHandler) PostJob(c *gin.Context) {
 		RepositoryName: strings.TrimSpace(body.RepositoryName),
 		DefaultBranch:  strings.TrimSpace(body.DefaultBranch),
 		Prompt:         body.Prompt,
-		EncryptedToken: body.EncryptedToken,
+		IntegrationID:  strings.TrimSpace(body.IntegrationID),
+		Provider:       domain.GitProvider(strings.TrimSpace(body.Provider)),
 		AgentType:      domain.AgentType(strings.TrimSpace(body.AgentType)),
 	}
 	ok := h.pool.TryGo(func() {

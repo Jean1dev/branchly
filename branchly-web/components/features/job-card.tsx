@@ -1,4 +1,5 @@
 import { StatusBadge } from "@/components/features/status-badge";
+import { ProviderBadge } from "@/components/ui/provider-badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { formatDate, truncate } from "@/lib/utils";
@@ -18,8 +19,9 @@ export function JobCard({ job }: { job: Job }) {
           </Link>
           <StatusBadge status={job.status} />
         </div>
-        <p className="text-sm text-gray-500 dark:text-gray-400">
-          {job.repositoryName}
+        <p className="flex items-center gap-1.5 text-sm text-gray-500 dark:text-gray-400">
+          <ProviderBadge provider={job.repositoryProvider} />
+          <span>{job.repositoryName}</span>
         </p>
         <p className="text-sm">{truncate(job.prompt, 120)}</p>
         <p className="text-xs text-gray-500 dark:text-gray-400">

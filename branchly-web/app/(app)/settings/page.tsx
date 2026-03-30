@@ -1,5 +1,6 @@
 import { DisconnectAccountButton } from "@/components/features/disconnect-account-button";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { PageHeader } from "@/components/layout/page-header";
@@ -72,6 +73,20 @@ async function SettingsBody() {
             </p>
           </div>
           <Badge variant="success">Connected</Badge>
+        </Card>
+      </section>
+      <section className="space-y-4">
+        <h2 className="text-lg font-semibold">Git integrations</h2>
+        <Card className="flex flex-wrap items-center justify-between gap-4 p-6">
+          <div>
+            <p className="font-medium">Manage integrations</p>
+            <p className="text-sm text-gray-500 dark:text-gray-400">
+              Connect GitHub and GitLab to access your repositories.
+            </p>
+          </div>
+          <Button variant="secondary" size="sm" href="/settings/integrations">
+            Manage →
+          </Button>
         </Card>
       </section>
       <section className="space-y-4">
