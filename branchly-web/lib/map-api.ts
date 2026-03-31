@@ -96,6 +96,7 @@ function mapLogLevel(l: string): JobLogLevel {
 
 function mapGitProvider(s: string | undefined): GitProvider {
   if (s === "gitlab") return "gitlab";
+  if (s === "azure-devops") return "azure-devops";
   return "github";
 }
 
@@ -206,9 +207,9 @@ export function jobRepoNameMap(
 
 export function jobRepoProviderMap(
   repos: ApiRepository[]
-): Record<string, string> {
+): Record<string, GitProvider> {
   const list = Array.isArray(repos) ? repos : [];
   return Object.fromEntries(
-    list.map((r) => [r.id, r.provider ?? "github"] as const)
+    list.map((r) => [r.id, mapGitProvider(r.provider)] as const)
   );
 }

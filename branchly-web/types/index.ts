@@ -2,7 +2,7 @@ export type JobStatus = "pending" | "running" | "completed" | "failed";
 
 export type AgentType = "claude-code" | "gemini";
 
-export type GitProvider = "github" | "gitlab";
+export type GitProvider = "github" | "gitlab" | "azure-devops";
 
 export const AGENTS = [
   {

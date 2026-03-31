@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -20,9 +21,10 @@ import (
 )
 
 var (
-	ErrInvalidToken     = errors.New("invalid or expired token")
-	ErrAlreadyConnected = errors.New("provider already connected")
-	ErrIntegrationInUse = errors.New("integration has connected repositories")
+	ErrInvalidToken           = errors.New("invalid or expired token")
+	ErrAlreadyConnected       = errors.New("provider already connected")
+	ErrIntegrationInUse       = errors.New("integration has connected repositories")
+	ErrCannotDisconnectGitHub = errors.New("github integration cannot be disconnected")
 )
 
 type IntegrationService struct {
@@ -31,6 +33,7 @@ type IntegrationService struct {
 	repos        domain.ConnectedRepositoryRepository
 	httpClient   *http.Client
 	gitlabBase   string
+	azureBase    string
 }
 
 func NewIntegrationService(
@@ -48,6 +51,7 @@ func NewIntegrationService(
 		repos:        repos,
 		httpClient:   httpClient,
 		gitlabBase:   "https://gitlab.com",
+		azureBase:    "https://dev.azure.com",
 	}
 }
 
@@ -165,6 +169,9 @@ func (s *IntegrationService) Disconnect(ctx context.Context, userID, integration
 	if ig == nil || ig.UserID != userID {
 		return ErrNotFound
 	}
+	if ig.Provider == domain.GitProviderGitHub {
+		return ErrCannotDisconnectGitHub
+	}
 
 	connectedRepos, err := s.repos.FindByIntegrationID(ctx, integrationID)
 	if err != nil {
@@ -242,6 +249,140 @@ func (s *IntegrationService) listGitHubRepos(ctx context.Context, token string) 
 			DefaultBranch: r.DefaultBranch,
 			Language:      r.Language,
 			Provider:      domain.GitProviderGitHub,
+		})
+	}
+	return out, nil
+}
+
+// ConnectAzureDevOps validates a PAT against the Azure DevOps API and saves the integration.
+func (s *IntegrationService) ConnectAzureDevOps(ctx context.Context, userID, pat, orgURL string) (*domain.GitIntegration, error) {
+	existing, err := s.integrations.FindByUserAndProvider(ctx, userID, domain.GitProviderAzureDevOps)
+	if err != nil {
+		return nil, fmt.Errorf("integration service: connect azure-devops check: %w", err)
+	}
+	if existing != nil {
+		return nil, ErrAlreadyConnected
+	}
+
+	orgURL = strings.TrimRight(orgURL, "/")
+	if err := s.validateAzureDevOpsPAT(ctx, orgURL, pat); err != nil {
+		return nil, err
+	}
+
+	enc, err := infra.Encrypt(pat, s.cfg.EncryptionKey)
+	if err != nil {
+		return nil, fmt.Errorf("integration service: encrypt azure-devops token: %w", err)
+	}
+	ig := &domain.GitIntegration{
+		ID:             uuid.New().String(),
+		UserID:         userID,
+		Provider:       domain.GitProviderAzureDevOps,
+		EncryptedToken: enc,
+		TokenType:      domain.TokenTypePAT,
+		Scopes:         []string{"vso.code_write"},
+		OrgURL:         orgURL,
+		ConnectedAt:    time.Now().UTC(),
+	}
+	if err := s.integrations.Upsert(ctx, ig); err != nil {
+		return nil, fmt.Errorf("integration service: connect azure-devops upsert: %w", err)
+	}
+	out, err := s.integrations.FindByUserAndProvider(ctx, userID, domain.GitProviderAzureDevOps)
+	if err != nil {
+		return nil, fmt.Errorf("integration service: connect azure-devops find: %w", err)
+	}
+	return out, nil
+}
+
+func (s *IntegrationService) azureBasicAuth(pat string) string {
+	return "Basic " + base64.StdEncoding.EncodeToString([]byte(":"+pat))
+}
+
+func (s *IntegrationService) validateAzureDevOpsPAT(ctx context.Context, orgURL, pat string) error {
+	reqCtx, cancel := context.WithTimeout(ctx, 8*time.Second)
+	defer cancel()
+	url := orgURL + "/_apis/projects?api-version=7.0&$top=1"
+	req, err := http.NewRequestWithContext(reqCtx, http.MethodGet, url, nil)
+	if err != nil {
+		return fmt.Errorf("integration service: azure-devops validate request: %w", err)
+	}
+	req.Header.Set("Authorization", s.azureBasicAuth(pat))
+	resp, err := s.httpClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("integration service: azure-devops validate call: %w", err)
+	}
+	defer resp.Body.Close()
+	_, _ = io.Copy(io.Discard, resp.Body)
+	if resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden {
+		return ErrInvalidToken
+	}
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("integration service: azure-devops validate status %d", resp.StatusCode)
+	}
+	return nil
+}
+
+// listAzureDevOpsRepos fetches repositories from Azure DevOps using the decrypted PAT.
+func (s *IntegrationService) listAzureDevOpsRepos(ctx context.Context, orgURL, pat string) ([]ProviderRepo, error) {
+	reqCtx, cancel := context.WithTimeout(ctx, 8*time.Second)
+	defer cancel()
+	url := orgURL + "/_apis/git/repositories?api-version=7.0"
+	req, err := http.NewRequestWithContext(reqCtx, http.MethodGet, url, nil)
+	if err != nil {
+		return nil, fmt.Errorf("integration service: azure-devops repos request: %w", err)
+	}
+	req.Header.Set("Authorization", s.azureBasicAuth(pat))
+	resp, err := s.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("integration service: azure-devops repos call: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("integration service: azure-devops repos status %d", resp.StatusCode)
+	}
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 8<<20))
+	if err != nil {
+		return nil, fmt.Errorf("integration service: azure-devops repos read: %w", err)
+	}
+	type azProject struct {
+		Name string `json:"name"`
+	}
+	type azRepo struct {
+		ID            string    `json:"id"`
+		Name          string    `json:"name"`
+		DefaultBranch string    `json:"defaultBranch"`
+		RemoteURL     string    `json:"remoteUrl"`
+		Project       azProject `json:"project"`
+	}
+	var raw struct {
+		Value []azRepo `json:"value"`
+	}
+	if err := json.Unmarshal(body, &raw); err != nil {
+		return nil, fmt.Errorf("integration service: azure-devops repos decode: %w", err)
+	}
+
+	// Extract org name from orgURL for FullName construction.
+	parts := strings.Split(strings.TrimPrefix(strings.TrimPrefix(orgURL, "https://"), "http://"), "/")
+	org := ""
+	if len(parts) >= 2 {
+		org = parts[1] // dev.azure.com/{org}
+	} else if len(parts) == 1 {
+		org = parts[0] // legacy visualstudio.com URL: already org name
+	}
+
+	out := make([]ProviderRepo, 0, len(raw.Value))
+	for _, r := range raw.Value {
+		defaultBranch := strings.TrimPrefix(r.DefaultBranch, "refs/heads/")
+		if defaultBranch == "" {
+			defaultBranch = "main"
+		}
+		fullName := org + "/" + r.Project.Name + "/" + r.Name
+		cloneURL := orgURL + "/" + r.Project.Name + "/_git/" + r.Name
+		out = append(out, ProviderRepo{
+			ExternalID:    r.ID,
+			FullName:      fullName,
+			CloneURL:      cloneURL,
+			DefaultBranch: defaultBranch,
+			Provider:      domain.GitProviderAzureDevOps,
 		})
 	}
 	return out, nil

@@ -38,7 +38,7 @@ export function ConnectRepoButton() {
       const data = unwrapApiData<ApiIntegration[]>(json);
       const list: IntegrationInfo[] = (Array.isArray(data) ? data : []).map((i) => ({
         id: i.id,
-        provider: i.provider === "gitlab" ? "gitlab" : "github",
+        provider: i.provider === "gitlab" ? "gitlab" : i.provider === "azure-devops" ? "azure-devops" : "github",
       }));
       list.sort((a, b) => (a.provider === "github" ? -1 : b.provider === "github" ? 1 : 0));
       setIntegrations(list);
@@ -133,7 +133,7 @@ export function ConnectRepoButton() {
     }
   };
 
-  const providerDisplayName: Record<GitProvider, string> = { github: "GitHub", gitlab: "GitLab" };
+  const providerDisplayName: Record<GitProvider, string> = { github: "GitHub", gitlab: "GitLab", "azure-devops": "Azure DevOps" };
 
   return (
     <>
@@ -161,7 +161,7 @@ export function ConnectRepoButton() {
                   Select the Git provider to browse your repositories.
                 </p>
                 <div className="mt-6 grid grid-cols-2 gap-3">
-                  {(["github", "gitlab"] as GitProvider[]).map((provider) => {
+                  {(["github", "gitlab", "azure-devops"] as GitProvider[]).map((provider) => {
                     const integ = integrations.find((i) => i.provider === provider);
                     const connected = !!integ;
                     return (

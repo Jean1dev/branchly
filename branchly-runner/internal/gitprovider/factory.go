@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"github.com/branchly/branchly-runner/internal/domain"
+	"github.com/branchly/branchly-runner/internal/gitprovider/azuredevops"
 	"github.com/branchly/branchly-runner/internal/gitprovider/github"
 	"github.com/branchly/branchly-runner/internal/gitprovider/gitlab"
 )
@@ -21,6 +22,8 @@ func (f *Factory) Create(provider domain.GitProvider) (domain.GitProviderClient,
 		return github.NewClient(), nil
 	case domain.GitProviderGitLab:
 		return gitlab.NewClient(), nil
+	case domain.GitProviderAzureDevOps:
+		return azuredevops.NewClient(), nil
 	default:
 		return nil, fmt.Errorf("unsupported git provider: %s", provider)
 	}

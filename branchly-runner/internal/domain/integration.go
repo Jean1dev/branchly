@@ -5,8 +5,9 @@ import "context"
 type GitProvider string
 
 const (
-	GitProviderGitHub GitProvider = "github"
-	GitProviderGitLab GitProvider = "gitlab"
+	GitProviderGitHub      GitProvider = "github"
+	GitProviderGitLab      GitProvider = "gitlab"
+	GitProviderAzureDevOps GitProvider = "azure-devops"
 )
 
 type TokenType string

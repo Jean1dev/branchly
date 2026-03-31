@@ -147,6 +147,8 @@ func (s *RepositoryService) ListFromProvider(ctx context.Context, userID, integr
 		all, err = s.integSvc.listGitHubRepos(ctx, token)
 	case domain.GitProviderGitLab:
 		all, err = s.integSvc.listGitLabProjects(ctx, token)
+	case domain.GitProviderAzureDevOps:
+		all, err = s.integSvc.listAzureDevOpsRepos(ctx, ig.OrgURL, token)
 	default:
 		return nil, fmt.Errorf("repository service: unsupported provider %s", ig.Provider)
 	}

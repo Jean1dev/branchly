@@ -77,6 +77,34 @@ func (h *IntegrationHandler) ConnectGitLab(c *gin.Context) {
 	respond.JSONCreated(c, toIntegrationResponse(ig))
 }
 
+type connectAzureDevOpsRequest struct {
+	PAT    string `json:"pat" binding:"required"`
+	OrgURL string `json:"org_url" binding:"required"`
+}
+
+func (h *IntegrationHandler) ConnectAzureDevOps(c *gin.Context) {
+	var req connectAzureDevOpsRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		respond.JSONError(c, http.StatusBadRequest, "BAD_REQUEST", "invalid body")
+		return
+	}
+	uid := c.GetString(middleware.ContextUserIDKey)
+	ig, err := h.integSvc.ConnectAzureDevOps(c.Request.Context(), uid, req.PAT, req.OrgURL)
+	if err != nil {
+		if errors.Is(err, service.ErrInvalidToken) {
+			respond.JSONError(c, http.StatusUnprocessableEntity, "INVALID_TOKEN", "invalid or expired Azure DevOps token")
+			return
+		}
+		if errors.Is(err, service.ErrAlreadyConnected) {
+			respond.JSONError(c, http.StatusConflict, "CONFLICT", "Azure DevOps already connected")
+			return
+		}
+		respond.JSONError(c, http.StatusInternalServerError, "INTERNAL_ERROR", "could not connect Azure DevOps")
+		return
+	}
+	respond.JSONCreated(c, toIntegrationResponse(ig))
+}
+
 func (h *IntegrationHandler) Delete(c *gin.Context) {
 	id := c.Param("id")
 	uid := c.GetString(middleware.ContextUserIDKey)
@@ -88,6 +116,10 @@ func (h *IntegrationHandler) Delete(c *gin.Context) {
 		}
 		if errors.Is(err, service.ErrIntegrationInUse) {
 			respond.JSONError(c, http.StatusConflict, "INTEGRATION_IN_USE", "integration has connected repositories")
+			return
+		}
+		if errors.Is(err, service.ErrCannotDisconnectGitHub) {
+			respond.JSONError(c, http.StatusForbidden, "GITHUB_INTEGRATION_LOCKED", "GitHub integration cannot be disconnected")
 			return
 		}
 		respond.JSONError(c, http.StatusInternalServerError, "INTERNAL_ERROR", "could not disconnect integration")

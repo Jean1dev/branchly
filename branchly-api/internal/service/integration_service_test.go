@@ -282,6 +282,21 @@ func TestDisconnect_WrongOwner_ReturnsErrNotFound(t *testing.T) {
 	}
 }
 
+func TestDisconnect_GitHub_ReturnsErrCannotDisconnectGitHub(t *testing.T) {
+	integRepo := newMockIntegrationRepo()
+	ig := &domain.GitIntegration{ID: "integ-gh", UserID: "user-1", Provider: domain.GitProviderGitHub}
+	integRepo.byID["integ-gh"] = ig
+
+	svc := newTestIntegSvc(integRepo, newStubRepoRepo(), nil)
+	err := svc.Disconnect(context.Background(), "user-1", "integ-gh")
+	if !errors.Is(err, ErrCannotDisconnectGitHub) {
+		t.Errorf("expected ErrCannotDisconnectGitHub, got %v", err)
+	}
+	if len(integRepo.deleted) > 0 {
+		t.Error("GitHub integration must not be deleted")
+	}
+}
+
 func TestDisconnect_NonExistent_ReturnsErrNotFound(t *testing.T) {
 	svc := newTestIntegSvc(newMockIntegrationRepo(), newStubRepoRepo(), nil)
 	err := svc.Disconnect(context.Background(), "user-1", "nonexistent-id")

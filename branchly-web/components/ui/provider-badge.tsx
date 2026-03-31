@@ -8,6 +8,7 @@ interface ProviderBadgeProps {
 const providerLabel: Record<GitProvider, string> = {
   github: "GitHub",
   gitlab: "GitLab",
+  "azure-devops": "Azure DevOps",
 };
 
 export function ProviderBadge({ provider }: ProviderBadgeProps) {

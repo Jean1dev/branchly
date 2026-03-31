@@ -91,6 +91,7 @@ func main() {
 
 		protected.GET("/integrations", integH.List)
 		protected.POST("/integrations/gitlab", integH.ConnectGitLab)
+		protected.POST("/integrations/azure-devops", integH.ConnectAzureDevOps)
 		protected.DELETE("/integrations/:id", integH.Delete)
 		protected.GET("/integrations/:id/repositories", integH.ListRepositories)
 
