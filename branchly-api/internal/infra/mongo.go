@@ -44,23 +44,43 @@ func EnsureIndexes(ctx context.Context, db *mongo.Database) error {
 		return fmt.Errorf("infra/mongo: users index: %w", err)
 	}
 
-	repos := db.Collection("repositories")
-	_, err = repos.Indexes().CreateOne(ctx, mongo.IndexModel{
-		Keys:    bson.D{{Key: "user_id", Value: 1}},
-		Options: options.Index().SetName("idx_repositories_user_id"),
-	})
-	if err != nil {
-		return fmt.Errorf("infra/mongo: repositories user_id index: %w", err)
-	}
-	_, err = repos.Indexes().CreateOne(ctx, mongo.IndexModel{
+	// git_integrations: unique on (user_id, provider)
+	integrations := db.Collection("git_integrations")
+	_, err = integrations.Indexes().CreateOne(ctx, mongo.IndexModel{
 		Keys: bson.D{
 			{Key: "user_id", Value: 1},
-			{Key: "github_repo_id", Value: 1},
+			{Key: "provider", Value: 1},
 		},
-		Options: options.Index().SetUnique(true).SetName("uniq_user_github_repo"),
+		Options: options.Index().SetUnique(true).SetName("uniq_integrations_user_provider"),
 	})
 	if err != nil {
-		return fmt.Errorf("infra/mongo: repositories uniq index: %w", err)
+		return fmt.Errorf("infra/mongo: git_integrations index: %w", err)
+	}
+
+	repos := db.Collection("repositories")
+	for _, model := range []mongo.IndexModel{
+		{
+			Keys:    bson.D{{Key: "integration_id", Value: 1}},
+			Options: options.Index().SetName("idx_repositories_integration_id"),
+		},
+		{
+			Keys: bson.D{
+				{Key: "user_id", Value: 1},
+				{Key: "external_id", Value: 1},
+				{Key: "provider", Value: 1},
+			},
+			Options: options.Index().
+				SetUnique(true).
+				SetPartialFilterExpression(bson.D{
+					{Key: "external_id", Value: bson.D{{Key: "$exists", Value: true}}},
+					{Key: "provider", Value: bson.D{{Key: "$exists", Value: true}}},
+				}).
+				SetName("uniq_user_external_provider"),
+		},
+	} {
+		if _, err := repos.Indexes().CreateOne(ctx, model); err != nil {
+			return fmt.Errorf("infra/mongo: repositories index: %w", err)
+		}
 	}
 
 	jobs := db.Collection("jobs")

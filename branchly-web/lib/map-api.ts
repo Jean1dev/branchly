@@ -1,4 +1,4 @@
-import type { AgentType, Job, JobCost, JobLog, JobLogLevel, JobStatus, Repository } from "@/types";
+import type { AgentType, GitIntegration, GitProvider, Job, JobCost, JobLog, JobLogLevel, JobStatus, ProviderRepo, Repository } from "@/types";
 
 export function unwrapApiData<T>(json: unknown): T {
   if (
@@ -24,10 +24,30 @@ export function parseApiErrorMessage(json: unknown, status: number): string {
 
 export type ApiRepository = {
   id: string;
+  integration_id: string;
+  provider: string;
+  external_id: string;
   full_name: string;
+  clone_url: string;
   default_branch: string;
   language: string;
   connected_at: string;
+};
+
+export type ApiIntegration = {
+  id: string;
+  provider: string;
+  token_type: string;
+  connected_at: string;
+};
+
+export type ApiProviderRepo = {
+  external_id: string;
+  full_name: string;
+  clone_url: string;
+  default_branch: string;
+  language: string;
+  provider: string;
 };
 
 export type ApiJobCost = {
@@ -74,6 +94,12 @@ function mapLogLevel(l: string): JobLogLevel {
   return "info";
 }
 
+function mapGitProvider(s: string | undefined): GitProvider {
+  if (s === "gitlab") return "gitlab";
+  if (s === "azure-devops") return "azure-devops";
+  return "github";
+}
+
 export function formatLogTimestamp(iso: string): string {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return iso;
@@ -97,14 +123,38 @@ export function mapJobLog(e: {
   };
 }
 
+export function mapIntegration(r: ApiIntegration): GitIntegration {
+  return {
+    id: r.id,
+    provider: mapGitProvider(r.provider),
+    tokenType: r.token_type === "pat" ? "pat" : "oauth",
+    connectedAt: r.connected_at,
+  };
+}
+
 export function mapRepository(r: ApiRepository): Repository {
   return {
     id: r.id,
+    integrationId: r.integration_id ?? "",
+    provider: mapGitProvider(r.provider),
+    externalId: r.external_id ?? "",
     fullName: r.full_name,
+    cloneUrl: r.clone_url ?? "",
     defaultBranch: r.default_branch,
     language: r.language || "—",
     lastJobAt: r.connected_at,
     jobsCount: 0,
+  };
+}
+
+export function mapProviderRepo(r: ApiProviderRepo): ProviderRepo {
+  return {
+    externalId: r.external_id,
+    fullName: r.full_name,
+    cloneUrl: r.clone_url,
+    defaultBranch: r.default_branch,
+    language: r.language || "—",
+    provider: mapGitProvider(r.provider),
   };
 }
 
@@ -127,12 +177,14 @@ function mapAgentType(s: string | undefined): AgentType {
 
 export function mapJob(
   j: ApiJob,
-  repositoryName: string | undefined
+  repositoryName: string | undefined,
+  repositoryProvider?: string | undefined
 ): Job {
   return {
     id: j.id,
     repositoryId: j.repository_id,
     repositoryName: repositoryName ?? j.repository_id,
+    repositoryProvider: mapGitProvider(repositoryProvider),
     prompt: j.prompt,
     status: mapJobStatus(j.status),
     agentType: mapAgentType(j.agent_type),
@@ -150,5 +202,14 @@ export function jobRepoNameMap(
   const list = Array.isArray(repos) ? repos : [];
   return Object.fromEntries(
     list.map((r) => [r.id, r.full_name] as const)
+  );
+}
+
+export function jobRepoProviderMap(
+  repos: ApiRepository[]
+): Record<string, GitProvider> {
+  const list = Array.isArray(repos) ? repos : [];
+  return Object.fromEntries(
+    list.map((r) => [r.id, mapGitProvider(r.provider)] as const)
   );
 }

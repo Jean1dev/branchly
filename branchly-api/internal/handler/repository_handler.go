@@ -20,16 +20,22 @@ func NewRepositoryHandler(svc *service.RepositoryService) *RepositoryHandler {
 }
 
 type connectRepoRequest struct {
-	GithubRepoID  int64  `json:"github_repo_id" binding:"required"`
+	IntegrationID string `json:"integration_id" binding:"required"`
+	ExternalID    string `json:"external_id" binding:"required"`
 	FullName      string `json:"full_name" binding:"required"`
+	CloneURL      string `json:"clone_url" binding:"required"`
 	DefaultBranch string `json:"default_branch"`
 	Language      string `json:"language"`
+	Provider      string `json:"provider" binding:"required"`
 }
 
 type repositoryResponse struct {
 	ID            string `json:"id"`
-	GithubRepoID  int64  `json:"github_repo_id"`
+	IntegrationID string `json:"integration_id"`
+	Provider      string `json:"provider"`
+	ExternalID    string `json:"external_id"`
 	FullName      string `json:"full_name"`
+	CloneURL      string `json:"clone_url"`
 	DefaultBranch string `json:"default_branch"`
 	Language      string `json:"language"`
 	ConnectedAt   string `json:"connected_at"`
@@ -52,8 +58,11 @@ func (h *RepositoryHandler) List(c *gin.Context) {
 func repoToResponse(r *domain.Repository) repositoryResponse {
 	return repositoryResponse{
 		ID:            r.ID,
-		GithubRepoID:  r.GithubRepoID,
+		IntegrationID: r.IntegrationID,
+		Provider:      string(r.Provider),
+		ExternalID:    r.ExternalID,
 		FullName:      r.FullName,
+		CloneURL:      r.CloneURL,
 		DefaultBranch: r.DefaultBranch,
 		Language:      r.Language,
 		ConnectedAt:   r.ConnectedAt.UTC().Format("2006-01-02T15:04:05Z07:00"),
@@ -67,15 +76,27 @@ func (h *RepositoryHandler) Connect(c *gin.Context) {
 		return
 	}
 	uid := c.GetString(middleware.ContextUserIDKey)
+	provider := domain.GitProvider(req.Provider)
+	if !provider.IsValid() {
+		respond.JSONError(c, http.StatusBadRequest, "BAD_REQUEST", "unsupported provider")
+		return
+	}
 	repo, err := h.svc.Connect(c.Request.Context(), uid, service.ConnectRepositoryInput{
-		GithubRepoID:  req.GithubRepoID,
+		IntegrationID: req.IntegrationID,
+		ExternalID:    req.ExternalID,
 		FullName:      req.FullName,
+		CloneURL:      req.CloneURL,
 		DefaultBranch: req.DefaultBranch,
 		Language:      req.Language,
+		Provider:      provider,
 	})
 	if err != nil {
-		if errors.Is(err, service.ErrAlreadyConnected) {
+		if errors.Is(err, service.ErrAlreadyConnectedRepo) {
 			respond.JSONError(c, http.StatusConflict, "CONFLICT", "repository already connected")
+			return
+		}
+		if errors.Is(err, service.ErrNotFound) {
+			respond.JSONError(c, http.StatusNotFound, "NOT_FOUND", "integration not found")
 			return
 		}
 		respond.JSONError(c, http.StatusInternalServerError, "INTERNAL_ERROR", "could not connect repository")
@@ -96,18 +117,4 @@ func (h *RepositoryHandler) Delete(c *gin.Context) {
 		return
 	}
 	respond.JSONOK(c, gin.H{"deleted": true})
-}
-
-func (h *RepositoryHandler) ListGitHub(c *gin.Context) {
-	uid := c.GetString(middleware.ContextUserIDKey)
-	list, err := h.svc.ListGitHubAvailable(c.Request.Context(), uid)
-	if err != nil {
-		if errors.Is(err, service.ErrNotFound) {
-			respond.JSONError(c, http.StatusNotFound, "NOT_FOUND", "user not found")
-			return
-		}
-		respond.JSONError(c, http.StatusBadGateway, "GITHUB_ERROR", "could not list github repositories")
-		return
-	}
-	respond.JSONOK(c, list)
 }

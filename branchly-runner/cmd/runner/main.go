@@ -16,6 +16,7 @@ import (
 	"github.com/branchly/branchly-runner/internal/agent/gemini"
 	"github.com/branchly/branchly-runner/internal/config"
 	"github.com/branchly/branchly-runner/internal/executor"
+	"github.com/branchly/branchly-runner/internal/gitprovider"
 	"github.com/branchly/branchly-runner/internal/handler"
 	"github.com/branchly/branchly-runner/internal/infra"
 	"github.com/branchly/branchly-runner/internal/pool"
@@ -50,12 +51,23 @@ func main() {
 	jobRepo := repository.NewJobRepository(db)
 	jobLogRepo := repository.NewJobLogRepository(db)
 	repoRepo := repository.NewRepoRepository(db)
+	integrationRepo := repository.NewIntegrationRepository(db)
 
 	claudeAgent := claudecode.New()
 	geminiAgent := gemini.New()
 	agentFactory := agentpkg.NewFactory(claudeAgent, geminiAgent)
+	providerFactory := gitprovider.NewFactory()
 
-	ex := executor.NewExecutor(agentFactory, jobRepo, jobLogRepo, repoRepo, cfg.EncryptionKey, cfg.WorkDir)
+	ex := executor.NewExecutor(
+		agentFactory,
+		providerFactory,
+		jobRepo,
+		jobLogRepo,
+		repoRepo,
+		integrationRepo,
+		cfg.EncryptionKey,
+		cfg.WorkDir,
+	)
 	p := pool.New(cfg.MaxConcurrentJobs)
 	jobsH := handler.NewJobsHandler(cfg.RunnerSecret, p, ex)
 

@@ -18,7 +18,8 @@ type DispatchJobPayload struct {
 	RepositoryName string `json:"repository_name"`
 	DefaultBranch  string `json:"default_branch"`
 	Prompt         string `json:"prompt"`
-	EncryptedToken string `json:"encrypted_token"`
+	IntegrationID  string `json:"integration_id"`
+	Provider       string `json:"provider"`
 	AgentType      string `json:"agent_type"`
 }
 

@@ -12,6 +12,7 @@ import (
 
 	agentpkg "github.com/branchly/branchly-runner/internal/agent"
 	"github.com/branchly/branchly-runner/internal/domain"
+	"github.com/branchly/branchly-runner/internal/gitprovider"
 	"github.com/branchly/branchly-runner/internal/infra"
 	"github.com/branchly/branchly-runner/internal/slug"
 	"github.com/go-git/go-git/v5"
@@ -19,7 +20,6 @@ import (
 	"github.com/go-git/go-git/v5/plumbing"
 	"github.com/go-git/go-git/v5/plumbing/object"
 	githttp "github.com/go-git/go-git/v5/plumbing/transport/http"
-	"github.com/google/go-github/v63/github"
 )
 
 // jobUpdater is satisfied by *repository.JobRepository.
@@ -41,22 +41,43 @@ type RunJobInput struct {
 	RepositoryName string
 	DefaultBranch  string
 	Prompt         string
-	EncryptedToken string
+	IntegrationID  string
+	Provider       domain.GitProvider
 	AgentType      domain.AgentType
 }
 
 type Executor struct {
-	factory  *agentpkg.Factory
-	jobs     jobUpdater
-	jobLogs  jobLogger
-	repos    domain.RepositoryRepository
-	encKey   []byte
-	workDir  string
-	appendMu sync.Mutex
+	factory         *agentpkg.Factory
+	providerFactory *gitprovider.Factory
+	jobs            jobUpdater
+	jobLogs         jobLogger
+	repos           domain.RepositoryRepository
+	integrations    domain.IntegrationRepository
+	encKey          []byte
+	workDir         string
+	appendMu        sync.Mutex
 }
 
-func NewExecutor(factory *agentpkg.Factory, jobs jobUpdater, jobLogs jobLogger, repos domain.RepositoryRepository, encKey []byte, workDir string) *Executor {
-	return &Executor{factory: factory, jobs: jobs, jobLogs: jobLogs, repos: repos, encKey: encKey, workDir: workDir}
+func NewExecutor(
+	factory *agentpkg.Factory,
+	providerFactory *gitprovider.Factory,
+	jobs jobUpdater,
+	jobLogs jobLogger,
+	repos domain.RepositoryRepository,
+	integrations domain.IntegrationRepository,
+	encKey []byte,
+	workDir string,
+) *Executor {
+	return &Executor{
+		factory:         factory,
+		providerFactory: providerFactory,
+		jobs:            jobs,
+		jobLogs:         jobLogs,
+		repos:           repos,
+		integrations:    integrations,
+		encKey:          encKey,
+		workDir:         workDir,
+	}
 }
 
 func persistCtx() (context.Context, context.CancelFunc) {
@@ -111,14 +132,6 @@ func (e *Executor) markCompleted(jobID, branchName, prURL, summary string) {
 	_ = e.jobs.UpdateJobFields(ctx, jobID, domain.JobStatusCompleted, prURL, branchName, &t)
 }
 
-func splitRepo(full string) (owner, name string, err error) {
-	parts := strings.Split(strings.TrimSpace(full), "/")
-	if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
-		return "", "", fmt.Errorf("invalid repository name")
-	}
-	return parts[0], parts[1], nil
-}
-
 func truncateRunes(s string, n int) string {
 	r := []rune(strings.TrimSpace(s))
 	if len(r) <= n {
@@ -171,10 +184,7 @@ func (e *Executor) Run(ctx context.Context, in RunJobInput) {
 	// Step 2: derive branch name from the prompt (no external I/O).
 	branchName := slug.GenerateSlug(in.Prompt)
 
-	// Step 3: validate repository ownership in the runner's own database —
-	// second line of defence after the API check. Also verifies that the
-	// repository_name in the payload matches the database to catch tampered
-	// payloads that keep a valid ID but swap the clone URL.
+	// Step 3: validate repository ownership in the runner's own database.
 	rctx, rcancel := persistCtx()
 	repo, repoErr := e.repos.FindByID(rctx, in.RepositoryID)
 	rcancel()
@@ -197,9 +207,6 @@ func (e *Executor) Run(ctx context.Context, in RunJobInput) {
 		return
 	}
 
-	slog.Info("job execution started", "job_id", in.JobID, "repository", in.RepositoryName)
-	startedAt := time.Now()
-
 	// Step 4: resolve the agent early — fail fast before any expensive I/O.
 	selectedAgent, err := e.factory.Create(in.AgentType)
 	if err != nil {
@@ -208,21 +215,50 @@ func (e *Executor) Run(ctx context.Context, in RunJobInput) {
 		return
 	}
 
-	// Step 5: decrypt token once. It is used for git operations and the GitHub
-	// API call, then explicitly zeroed after the PR is created (or on any error).
-	token, err := infra.Decrypt(in.EncryptedToken, e.encKey)
-	in.EncryptedToken = "" // clear the encrypted form from this goroutine's stack
+	// Step 5: fetch the integration and validate ownership.
+	ictx, icancel := persistCtx()
+	integration, integErr := e.integrations.FindByID(ictx, in.IntegrationID)
+	icancel()
+	if integErr != nil || integration == nil {
+		slog.Error("runner: integration not found", "job_id", in.JobID, "integration_id", in.IntegrationID)
+		e.markFailed(in.JobID, branchName, "integration not found")
+		return
+	}
+	if integration.UserID != in.UserID {
+		slog.Error("runner: integration ownership mismatch",
+			"job_id", in.JobID,
+			"integration_user_id", integration.UserID,
+			"job_user_id", in.UserID,
+		)
+		e.markFailed(in.JobID, branchName, "integration ownership validation failed")
+		return
+	}
+
+	// Step 6: decrypt token.
+	token, err := infra.Decrypt(integration.EncryptedToken, e.encKey)
+	integration.EncryptedToken = "" // clear from memory
 	if err != nil {
 		e.markFailed(in.JobID, branchName, "could not decrypt repository credentials")
 		return
 	}
-	// zeroToken is called at every exit path after this point.
 	zeroToken := func() { token = "" }
+
+	// Step 7: resolve provider client.
+	providerClient, err := e.providerFactory.Create(in.Provider)
+	if err != nil {
+		zeroToken()
+		e.markFailed(in.JobID, branchName, fmt.Sprintf("unsupported provider: %s", in.Provider))
+		return
+	}
+
+	slog.Info("job execution started", "job_id", in.JobID, "repository", in.RepositoryName, "provider", in.Provider)
+	startedAt := time.Now()
 
 	baseBranch := strings.TrimSpace(in.DefaultBranch)
 	if baseBranch == "" {
 		baseBranch = "main"
 	}
+
 	dir, err := jobScratchDir(e.workDir, in.JobID)
 	if err != nil {
 		zeroToken()
@@ -231,12 +267,19 @@ func (e *Executor) Run(ctx context.Context, in RunJobInput) {
 	}
 	defer func() { _ = os.RemoveAll(dir) }()
 
+	// Use clone_url from the repository document; fall back to constructing it.
+	cloneURL := repo.CloneURL
+	if cloneURL == "" {
+		cloneURL = fmt.Sprintf("https://github.com/%s.git", in.RepositoryName)
+	}
+
 	e.appendLog(in.JobID, domain.LogLevelInfo, "Cloning repository…")
-	auth := &githttp.BasicAuth{Username: "git", Password: token}
+	// Both GitHub OAuth and GitLab PAT use the same BasicAuth format.
+	auth := &githttp.BasicAuth{Username: "oauth2", Password: token}
 	cloneCtx, cloneCancel := context.WithTimeout(ctx, 60*time.Second)
 	defer cloneCancel()
 	_, err = git.PlainCloneContext(cloneCtx, dir, false, &git.CloneOptions{
-		URL:           fmt.Sprintf("https://github.com/%s.git", in.RepositoryName),
+		URL:           cloneURL,
 		ReferenceName: plumbing.NewBranchReferenceName(baseBranch),
 		SingleBranch:  true,
 		Depth:         1,
@@ -250,6 +293,7 @@ func (e *Executor) Run(ctx context.Context, in RunJobInput) {
 		return
 	}
 	slog.Info("repository cloned", "job_id", in.JobID)
+
 	gitRepo, err := git.PlainOpen(dir)
 	if err != nil {
 		zeroToken()
@@ -262,6 +306,7 @@ func (e *Executor) Run(ctx context.Context, in RunJobInput) {
 		e.markFailed(in.JobID, branchName, fmt.Sprintf("worktree: %v", err))
 		return
 	}
+
 	e.appendLog(in.JobID, domain.LogLevelInfo, fmt.Sprintf("Creating branch %s", branchName))
 	if err := wt.Checkout(&git.CheckoutOptions{
 		Branch: plumbing.NewBranchReferenceName(branchName),
@@ -271,6 +316,7 @@ func (e *Executor) Run(ctx context.Context, in RunJobInput) {
 		e.markFailed(in.JobID, branchName, fmt.Sprintf("create branch: %v", err))
 		return
 	}
+
 	e.appendLog(in.JobID, domain.LogLevelInfo, "Running agent…")
 	agentCtx, agentCancel := context.WithTimeout(ctx, 30*time.Minute)
 	defer agentCancel()
@@ -290,6 +336,7 @@ func (e *Executor) Run(ctx context.Context, in RunJobInput) {
 		return
 	}
 	slog.Info("agent finished", "job_id", in.JobID)
+
 	st, err := wt.Status()
 	if err != nil {
 		zeroToken()
@@ -301,11 +348,13 @@ func (e *Executor) Run(ctx context.Context, in RunJobInput) {
 		e.markFailed(in.JobID, branchName, "no file changes to commit after agent run")
 		return
 	}
+
 	if _, err := wt.Add("."); err != nil {
 		zeroToken()
 		e.markFailed(in.JobID, branchName, fmt.Sprintf("git add: %v", err))
 		return
 	}
+
 	e.appendLog(in.JobID, domain.LogLevelInfo, "Committing changes…")
 	_, err = wt.Commit("branchly: automated changes", &git.CommitOptions{
 		Author: &object.Signature{
@@ -323,6 +372,7 @@ func (e *Executor) Run(ctx context.Context, in RunJobInput) {
 		e.markFailed(in.JobID, branchName, fmt.Sprintf("git commit: %v", err))
 		return
 	}
+
 	e.appendLog(in.JobID, domain.LogLevelInfo, "Pushing branch…")
 	pushCtx, pushCancel := context.WithTimeout(ctx, 30*time.Second)
 	defer pushCancel()
@@ -340,25 +390,17 @@ func (e *Executor) Run(ctx context.Context, in RunJobInput) {
 		return
 	}
 	slog.Info("branch pushed", "job_id", in.JobID)
-	owner, repoName, err := splitRepo(in.RepositoryName)
-	if err != nil {
-		zeroToken()
-		e.markFailed(in.JobID, branchName, err.Error())
-		return
-	}
+
 	e.appendLog(in.JobID, domain.LogLevelInfo, "Opening pull request…")
 	prCtx, prCancel := context.WithTimeout(ctx, 15*time.Second)
 	defer prCancel()
-	gh := github.NewClient(nil).WithAuthToken(token)
-	title := "Branchly: " + truncateRunes(in.Prompt, 60)
-	body := summary
-	head := branchName
-	baseRef := baseBranch
-	pr, _, err := gh.PullRequests.Create(prCtx, owner, repoName, &github.NewPullRequest{
-		Title: &title,
-		Head:  &head,
-		Base:  &baseRef,
-		Body:  &body,
+
+	prURL, err := providerClient.OpenPR(prCtx, token, domain.PROptions{
+		RepoFullName: in.RepositoryName,
+		Title:        "Branchly: " + truncateRunes(in.Prompt, 60),
+		Body:         summary,
+		Head:         branchName,
+		Base:         baseBranch,
 	})
 	// Token is no longer needed — zero it before handling the result.
 	zeroToken()
@@ -367,7 +409,7 @@ func (e *Executor) Run(ctx context.Context, in RunJobInput) {
 		e.markFailed(in.JobID, branchName, fmt.Sprintf("open pull request: %v", err))
 		return
 	}
-	prURL := pr.GetHTMLURL()
+
 	slog.Info("job completed", "job_id", in.JobID, "pr_url", prURL)
 	e.markCompleted(in.JobID, branchName, prURL, summary)
 

@@ -30,11 +30,10 @@ func (r *mongoUserRepository) UpsertByProvider(ctx context.Context, u *domain.Us
 	}
 	now := time.Now().UTC()
 	set := bson.M{
-		"email":           u.Email,
-		"name":            u.Name,
-		"avatar_url":      u.AvatarURL,
-		"encrypted_token": u.EncryptedToken,
-		"updated_at":      now,
+		"email":      u.Email,
+		"name":       u.Name,
+		"avatar_url": u.AvatarURL,
+		"updated_at": now,
 	}
 	update := bson.M{
 		"$set": set,

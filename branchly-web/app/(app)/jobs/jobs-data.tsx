@@ -2,6 +2,7 @@ import { JobsView } from "@/components/features/jobs-view";
 import { apiFetch } from "@/lib/api-client";
 import {
   jobRepoNameMap,
+  jobRepoProviderMap,
   mapJob,
   unwrapApiData,
   type ApiJob,
@@ -25,7 +26,10 @@ export async function JobsData() {
     ? reposParsed
     : [];
   const names = jobRepoNameMap(reposRaw);
-  const jobs = jobsRaw.map((j) => mapJob(j, names[j.repository_id]));
+  const providers = jobRepoProviderMap(reposRaw);
+  const jobs = jobsRaw.map((j) =>
+    mapJob(j, names[j.repository_id], providers[j.repository_id])
+  );
 
   return <JobsView jobs={jobs} />;
 }

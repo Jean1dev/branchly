@@ -22,14 +22,12 @@ type JobService struct {
 	jobs    domain.JobRepository
 	jobLogs domain.JobLogRepository
 	repos   domain.ConnectedRepositoryRepository
-	users   domain.UserRepository
 	runner  runnerDispatcher
 }
 
-func NewJobService(cfg *config.Config, jobs domain.JobRepository, jobLogs domain.JobLogRepository, repos domain.ConnectedRepositoryRepository, users domain.UserRepository, runner *infra.RunnerClient) *JobService {
-	return &JobService{cfg: cfg, jobs: jobs, jobLogs: jobLogs, repos: repos, users: users, runner: runner}
+func NewJobService(cfg *config.Config, jobs domain.JobRepository, jobLogs domain.JobLogRepository, repos domain.ConnectedRepositoryRepository, runner *infra.RunnerClient) *JobService {
+	return &JobService{cfg: cfg, jobs: jobs, jobLogs: jobLogs, repos: repos, runner: runner}
 }
-
 
 type CreateJobInput struct {
 	RepositoryID string
@@ -38,8 +36,8 @@ type CreateJobInput struct {
 }
 
 func (s *JobService) Create(ctx context.Context, userID string, in CreateJobInput) (*domain.Job, error) {
-	// Validate repository ownership — intentionally returns ErrRepositoryNotFound
-	// for both "not found" and "wrong owner" to avoid leaking existence.
+	// Validate repository ownership — returns ErrRepositoryNotFound for both
+	// "not found" and "wrong owner" to avoid leaking existence.
 	repo, err := s.repos.FindByID(ctx, in.RepositoryID)
 	if err != nil {
 		return nil, fmt.Errorf("job service: create: repo: %w", err)
@@ -57,13 +55,6 @@ func (s *JobService) Create(ctx context.Context, userID string, in CreateJobInpu
 		return nil, ErrRateLimitExceeded
 	}
 
-	u, err := s.users.FindByID(ctx, userID)
-	if err != nil {
-		return nil, fmt.Errorf("job service: create: user: %w", err)
-	}
-	if u == nil {
-		return nil, ErrNotFound
-	}
 	now := time.Now().UTC()
 	job := &domain.Job{
 		ID:           uuid.New().String(),
@@ -78,6 +69,7 @@ func (s *JobService) Create(ctx context.Context, userID string, in CreateJobInpu
 	if err := s.jobs.Create(ctx, job); err != nil {
 		return nil, fmt.Errorf("job service: create: insert: %w", err)
 	}
+
 	dispatchCtx, cancel := context.WithTimeout(ctx, 12*time.Second)
 	defer cancel()
 	err = s.runner.DispatchJob(dispatchCtx, infra.DispatchJobPayload{
@@ -87,7 +79,8 @@ func (s *JobService) Create(ctx context.Context, userID string, in CreateJobInpu
 		RepositoryName: repo.FullName,
 		DefaultBranch:  repo.DefaultBranch,
 		Prompt:         job.Prompt,
-		EncryptedToken: u.EncryptedToken,
+		IntegrationID:  repo.IntegrationID,
+		Provider:       string(repo.Provider),
 		AgentType:      string(job.AgentType),
 	})
 	if err != nil {
