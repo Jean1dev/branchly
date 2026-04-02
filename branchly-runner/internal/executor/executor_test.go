@@ -137,7 +137,7 @@ func TestRun_ValidOwnership_ProceedsToDecrypt(t *testing.T) {
 func TestRun_DivergentUserID_MarksJobFailed(t *testing.T) {
 	repo := validRepo()
 	repo.UserID = "user-2"
-	ex, jobs, logs := newTestExecutor(
+	ex, jobs, _ := newTestExecutor(
 		&mockRepoRepo{repo: repo},
 		&mockIntegrationRepo{integration: validIntegration()},
 	)
@@ -150,7 +150,7 @@ func TestRun_DivergentUserID_MarksJobFailed(t *testing.T) {
 }
 
 func TestRun_NilRepo_MarksJobFailed(t *testing.T) {
-	ex, jobs, logs := newTestExecutor(
+	ex, jobs, _ := newTestExecutor(
 		&mockRepoRepo{repo: nil},
 		&mockIntegrationRepo{integration: validIntegration()},
 	)
@@ -163,7 +163,7 @@ func TestRun_NilRepo_MarksJobFailed(t *testing.T) {
 }
 
 func TestRun_RepositoryNameMismatch_MarksJobFailed(t *testing.T) {
-	ex, jobs, logs := newTestExecutor(
+	ex, jobs, _ := newTestExecutor(
 		&mockRepoRepo{repo: validRepo()},
 		&mockIntegrationRepo{integration: validIntegration()},
 	)
@@ -213,7 +213,7 @@ func TestRun_UnknownAgentType_MarksJobFailed(t *testing.T) {
 func TestRun_IntegrationOwnershipMismatch_MarksJobFailed(t *testing.T) {
 	integ := validIntegration()
 	integ.UserID = "other-user" // integration belongs to someone else
-	ex, jobs, logs := newTestExecutor(
+	ex, jobs, _ := newTestExecutor(
 		&mockRepoRepo{repo: validRepo()},
 		&mockIntegrationRepo{integration: integ},
 	)
