@@ -1,4 +1,4 @@
-package executor
+package classify
 
 import (
 	"errors"
@@ -134,7 +134,6 @@ func (e *mockTimeoutError) Temporary() bool { return true }
 func TestFailureClassifier_NetTimeoutError(t *testing.T) {
 	c := &FailureClassifier{}
 
-	// A net.Error with Timeout() true should be transient even without keyword match.
 	var netErr net.Error = &mockTimeoutError{}
 	got := c.Classify(netErr)
 	if got != domain.FailureTypeTransient {
