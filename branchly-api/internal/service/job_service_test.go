@@ -15,8 +15,10 @@ import (
 // ---- minimal in-memory mocks ----
 
 type mockJobRepo struct {
-	activeCount int64
-	created     []*domain.Job
+	activeCount    int64
+	created        []*domain.Job
+	findByIDForUser *domain.Job
+	resetForRetryCalled bool
 }
 
 func (m *mockJobRepo) Create(_ context.Context, job *domain.Job) error {
@@ -37,7 +39,11 @@ func (m *mockJobRepo) UpdateJobFields(_ context.Context, _ string, _ domain.JobS
 	return nil
 }
 func (m *mockJobRepo) FindByIDForUser(_ context.Context, _, _ string) (*domain.Job, error) {
-	return nil, nil
+	return m.findByIDForUser, nil
+}
+func (m *mockJobRepo) ResetForRetry(_ context.Context, _ string) error {
+	m.resetForRetryCalled = true
+	return nil
 }
 
 type mockJobLogRepo struct{}
@@ -239,6 +245,119 @@ func TestCreate_AgentTypeIsIncludedInDispatchPayload(t *testing.T) {
 	if runner.lastPayload.AgentType != string(domain.AgentTypeGemini) {
 		t.Errorf("expected AgentType %q in payload, got %q",
 			domain.AgentTypeGemini, runner.lastPayload.AgentType)
+	}
+}
+
+// ---- helpers for retry tests ----
+
+func failedJob(userID string) *domain.Job {
+	return &domain.Job{
+		ID:           "job-1",
+		UserID:       userID,
+		RepositoryID: "repo-1",
+		Status:       domain.JobStatusFailed,
+		AgentType:    domain.AgentTypeClaudeCode,
+		Prompt:       "fix bug",
+	}
+}
+
+func retryingJob(userID string) *domain.Job {
+	return &domain.Job{
+		ID:     "job-1",
+		UserID: userID,
+		Status: domain.JobStatusRetrying,
+	}
+}
+
+func completedJob(userID string) *domain.Job {
+	return &domain.Job{
+		ID:     "job-1",
+		UserID: userID,
+		Status: domain.JobStatusCompleted,
+	}
+}
+
+// ---- tests: Retry ----
+
+func TestRetry_FailedJob_ReturnsJob(t *testing.T) {
+	jobsMock := &mockJobRepo{findByIDForUser: failedJob("user-1")}
+	svc := &JobService{
+		cfg:     &config.Config{MaxActiveJobsPerUser: 3},
+		jobs:    jobsMock,
+		jobLogs: &mockJobLogRepo{},
+		repos:   &mockRepoRepo{repo: ownedRepo("user-1")},
+		runner:  &mockRunnerClient{},
+	}
+	_, err := svc.Retry(context.Background(), "user-1", "job-1")
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if !jobsMock.resetForRetryCalled {
+		t.Error("expected ResetForRetry to be called")
+	}
+}
+
+func TestRetry_CompletedJob_ReturnsErrNotRetryable(t *testing.T) {
+	jobsMock := &mockJobRepo{findByIDForUser: completedJob("user-1")}
+	svc := &JobService{
+		cfg:     &config.Config{MaxActiveJobsPerUser: 3},
+		jobs:    jobsMock,
+		jobLogs: &mockJobLogRepo{},
+		repos:   &mockRepoRepo{repo: ownedRepo("user-1")},
+		runner:  &mockRunnerClient{},
+	}
+	_, err := svc.Retry(context.Background(), "user-1", "job-1")
+	if !errors.Is(err, domain.ErrJobNotRetryable) {
+		t.Errorf("expected ErrJobNotRetryable, got %v", err)
+	}
+}
+
+func TestRetry_RetryingJob_ReturnsErrNotRetryable(t *testing.T) {
+	jobsMock := &mockJobRepo{findByIDForUser: retryingJob("user-1")}
+	svc := &JobService{
+		cfg:     &config.Config{MaxActiveJobsPerUser: 3},
+		jobs:    jobsMock,
+		jobLogs: &mockJobLogRepo{},
+		repos:   &mockRepoRepo{repo: ownedRepo("user-1")},
+		runner:  &mockRunnerClient{},
+	}
+	_, err := svc.Retry(context.Background(), "user-1", "job-1")
+	if !errors.Is(err, domain.ErrJobNotRetryable) {
+		t.Errorf("expected ErrJobNotRetryable, got %v", err)
+	}
+}
+
+func TestRetry_OtherUserJob_ReturnsErrJobNotFound(t *testing.T) {
+	// FindByIDForUser returns nil when the job doesn't belong to the user
+	jobsMock := &mockJobRepo{findByIDForUser: nil}
+	svc := &JobService{
+		cfg:     &config.Config{MaxActiveJobsPerUser: 3},
+		jobs:    jobsMock,
+		jobLogs: &mockJobLogRepo{},
+		repos:   &mockRepoRepo{repo: ownedRepo("user-2")},
+		runner:  &mockRunnerClient{},
+	}
+	_, err := svc.Retry(context.Background(), "user-1", "job-1")
+	if !errors.Is(err, ErrJobNotFound) {
+		t.Errorf("expected ErrJobNotFound, got %v", err)
+	}
+}
+
+func TestRetry_ResetsAttemptNumber(t *testing.T) {
+	jobsMock := &mockJobRepo{findByIDForUser: failedJob("user-1")}
+	svc := &JobService{
+		cfg:     &config.Config{MaxActiveJobsPerUser: 3},
+		jobs:    jobsMock,
+		jobLogs: &mockJobLogRepo{},
+		repos:   &mockRepoRepo{repo: ownedRepo("user-1")},
+		runner:  &mockRunnerClient{},
+	}
+	_, err := svc.Retry(context.Background(), "user-1", "job-1")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !jobsMock.resetForRetryCalled {
+		t.Error("expected ResetForRetry to be called to reset attempt_number")
 	}
 }
 

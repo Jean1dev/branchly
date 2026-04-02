@@ -21,6 +21,7 @@ import (
 	"github.com/branchly/branchly-runner/internal/infra"
 	"github.com/branchly/branchly-runner/internal/pool"
 	"github.com/branchly/branchly-runner/internal/repository"
+	"github.com/branchly/branchly-runner/internal/worker"
 	"github.com/gin-gonic/gin"
 )
 
@@ -69,6 +70,10 @@ func main() {
 		cfg.WorkDir,
 	)
 	p := pool.New(cfg.MaxConcurrentJobs)
+
+	retryPoller := worker.NewRetryPoller(jobRepo, repoRepo, ex, p)
+	go retryPoller.Start(ctx)
+
 	jobsH := handler.NewJobsHandler(cfg.RunnerSecret, p, ex)
 
 	gin.SetMode(gin.ReleaseMode)

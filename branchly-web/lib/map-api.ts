@@ -1,4 +1,4 @@
-import type { AgentType, GitIntegration, GitProvider, Job, JobCost, JobLog, JobLogLevel, JobStatus, ProviderRepo, Repository } from "@/types";
+import type { AgentType, FailureType, GitIntegration, GitProvider, Job, JobCost, JobLog, JobLogLevel, JobStatus, ProviderRepo, Repository } from "@/types";
 
 export function unwrapApiData<T>(json: unknown): T {
   if (
@@ -73,6 +73,11 @@ export type ApiJob = {
   completed_at?: string | null;
   logs?: Array<{ timestamp: string; level: string; message: string }>;
   cost?: ApiJobCost | null;
+  attempt_number?: number;
+  max_attempts?: number;
+  last_error?: string | null;
+  next_retry_at?: string | null;
+  failure_type?: string | null;
 };
 
 function mapJobStatus(s: string): JobStatus {
@@ -80,11 +85,17 @@ function mapJobStatus(s: string): JobStatus {
     s === "pending" ||
     s === "running" ||
     s === "completed" ||
-    s === "failed"
+    s === "failed" ||
+    s === "retrying"
   ) {
     return s;
   }
   return "pending";
+}
+
+function mapFailureType(s: string | null | undefined): FailureType {
+  if (s === "transient" || s === "permanent") return s;
+  return "";
 }
 
 function mapLogLevel(l: string): JobLogLevel {
@@ -193,6 +204,11 @@ export function mapJob(
     createdAt: j.created_at,
     completedAt: j.completed_at ?? null,
     cost: j.cost ? mapJobCost(j.cost) : null,
+    attemptNumber: j.attempt_number ?? 1,
+    maxAttempts: j.max_attempts ?? 3,
+    lastError: j.last_error ?? null,
+    nextRetryAt: j.next_retry_at ?? null,
+    failureType: mapFailureType(j.failure_type),
   };
 }
 

@@ -31,6 +31,9 @@ func (m *mockJobSvc) List(_ context.Context, _ string, _ *domain.JobStatus, _ *s
 func (m *mockJobSvc) Get(_ context.Context, _, _ string) (*domain.Job, error) {
 	return nil, nil
 }
+func (m *mockJobSvc) Retry(_ context.Context, _, _ string) (*domain.Job, error) {
+	return m.job, m.err
+}
 
 // ---- helpers ----
 

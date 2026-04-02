@@ -1,5 +1,6 @@
 import { JobCostCard } from "@/components/features/job-cost-card";
 import { JobLogPanel } from "@/components/features/job-log-panel";
+import { RetryCountdown } from "@/components/features/retry-countdown";
 import { StatusBadge } from "@/components/features/status-badge";
 import { Card } from "@/components/ui/card";
 import { ProviderBadge } from "@/components/ui/provider-badge";
@@ -16,6 +17,7 @@ import { formatDate, truncate } from "@/lib/utils";
 import { AGENTS } from "@/types";
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { RetryButton } from "./retry-button";
 
 export async function JobDetailContent({ id }: { id: string }) {
   const res = await apiFetch(`/jobs/${encodeURIComponent(id)}`);
@@ -95,6 +97,52 @@ export async function JobDetailContent({ id }: { id: string }) {
             <Separator />
             <div>
               <p className="text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                Attempts
+              </p>
+              <p className="mt-1 text-sm font-medium">
+                {job.attemptNumber}/{job.maxAttempts}
+              </p>
+            </div>
+            {job.status === "retrying" && job.nextRetryAt ? (
+              <>
+                <Separator />
+                <div>
+                  <p className="text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                    Next attempt
+                  </p>
+                  <p className="mt-1 text-sm font-medium">
+                    <RetryCountdown nextRetryAt={job.nextRetryAt} />
+                  </p>
+                </div>
+              </>
+            ) : null}
+            {job.lastError ? (
+              <>
+                <Separator />
+                <div>
+                  <p className="text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                    Last error
+                  </p>
+                  <p className="mt-1 text-sm text-red-500 dark:text-red-400 break-words">
+                    {job.lastError}
+                  </p>
+                </div>
+              </>
+            ) : null}
+            {job.failureType ? (
+              <>
+                <Separator />
+                <div>
+                  <p className="text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                    Failure type
+                  </p>
+                  <p className="mt-1 text-sm font-medium capitalize">{job.failureType}</p>
+                </div>
+              </>
+            ) : null}
+            <Separator />
+            <div>
+              <p className="text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">
                 Branch
               </p>
               <p className="mt-1 font-mono text-sm">{job.branchName}</p>
@@ -129,6 +177,12 @@ export async function JobDetailContent({ id }: { id: string }) {
                 <p className="text-xs text-gray-500 dark:text-gray-400">Completed</p>
                 <p className="mt-1 text-sm">{formatDate(job.completedAt)}</p>
               </div>
+            ) : null}
+            {job.status === "failed" ? (
+              <>
+                <Separator />
+                <RetryButton jobId={job.id} />
+              </>
             ) : null}
           </Card>
 

@@ -1,4 +1,6 @@
-export type JobStatus = "pending" | "running" | "completed" | "failed";
+export type JobStatus = "pending" | "running" | "completed" | "failed" | "retrying";
+
+export type FailureType = "transient" | "permanent" | "";
 
 export type AgentType = "claude-code" | "gemini";
 
@@ -83,6 +85,11 @@ export interface Job {
   createdAt: string;
   completedAt: string | null;
   cost: JobCost | null;
+  attemptNumber: number;
+  maxAttempts: number;
+  lastError: string | null;
+  nextRetryAt: string | null;
+  failureType: FailureType;
 }
 
 export interface JobLog {

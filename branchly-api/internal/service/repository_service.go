@@ -17,10 +17,11 @@ import (
 )
 
 var (
-	ErrNotFound           = errors.New("not found")
+	ErrNotFound             = errors.New("not found")
 	ErrAlreadyConnectedRepo = errors.New("repository already connected")
-	ErrRepositoryNotFound = errors.New("repository not found")
-	ErrRateLimitExceeded  = errors.New("active jobs limit reached")
+	ErrRepositoryNotFound   = errors.New("repository not found")
+	ErrRateLimitExceeded    = errors.New("active jobs limit reached")
+	ErrJobNotFound          = errors.New("job not found")
 )
 
 // ProviderRepo is a normalised repository from any Git provider.

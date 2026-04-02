@@ -94,12 +94,40 @@ func (r *mongoJobRepository) CountActiveByUserID(ctx context.Context, userID str
 	defer cancel()
 	n, err := r.coll.CountDocuments(ctx, bson.M{
 		"user_id": userID,
-		"status":  bson.M{"$in": []string{string(domain.JobStatusPending), string(domain.JobStatusRunning)}},
+		"status": bson.M{"$in": []string{
+			string(domain.JobStatusPending),
+			string(domain.JobStatusRunning),
+			string(domain.JobStatusRetrying),
+		}},
 	})
 	if err != nil {
 		return 0, fmt.Errorf("job repository: count active: %w", err)
 	}
 	return n, nil
+}
+
+func (r *mongoJobRepository) ResetForRetry(ctx context.Context, id string) error {
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	_, err := r.coll.UpdateOne(ctx, bson.M{"_id": id}, bson.M{
+		"$set": bson.M{
+			"status":         string(domain.JobStatusPending),
+			"attempt_number": 1,
+			"max_attempts":   3,
+			"last_error":     "",
+			"failure_type":   "",
+			"next_retry_at":  nil,
+			"pr_url":         "",
+			"updated_at":     time.Now().UTC(),
+		},
+		"$unset": bson.M{
+			"completed_at": "",
+		},
+	})
+	if err != nil {
+		return fmt.Errorf("job repository: reset for retry: %w", err)
+	}
+	return nil
 }
 
 func (r *mongoJobRepository) UpdateStatus(ctx context.Context, id string, status domain.JobStatus) error {
