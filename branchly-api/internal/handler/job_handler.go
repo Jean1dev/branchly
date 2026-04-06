@@ -17,6 +17,7 @@ type jobService interface {
 	Create(ctx context.Context, userID string, in service.CreateJobInput) (*domain.Job, error)
 	List(ctx context.Context, userID string, status *domain.JobStatus, repositoryID *string) ([]*domain.Job, error)
 	Get(ctx context.Context, userID, jobID string) (*domain.Job, error)
+	Retry(ctx context.Context, userID string, jobID string) (*domain.Job, error)
 }
 
 type JobHandler struct {
@@ -51,18 +52,23 @@ type jobCostResponse struct {
 }
 
 type jobResponse struct {
-	ID           string             `json:"id"`
-	RepositoryID string             `json:"repository_id"`
-	Prompt       string             `json:"prompt"`
-	Status       string             `json:"status"`
-	AgentType    string             `json:"agent_type"`
-	BranchName   string             `json:"branch_name"`
-	PRUrl        string             `json:"pr_url,omitempty"`
-	Logs         []logEntryResponse `json:"logs,omitempty"`
-	Cost         *jobCostResponse   `json:"cost,omitempty"`
-	CreatedAt    string             `json:"created_at"`
-	UpdatedAt    string             `json:"updated_at"`
-	CompletedAt  *string            `json:"completed_at,omitempty"`
+	ID            string             `json:"id"`
+	RepositoryID  string             `json:"repository_id"`
+	Prompt        string             `json:"prompt"`
+	Status        string             `json:"status"`
+	AgentType     string             `json:"agent_type"`
+	BranchName    string             `json:"branch_name"`
+	PRUrl         string             `json:"pr_url,omitempty"`
+	Logs          []logEntryResponse `json:"logs,omitempty"`
+	Cost          *jobCostResponse   `json:"cost,omitempty"`
+	AttemptNumber int                `json:"attempt_number"`
+	MaxAttempts   int                `json:"max_attempts"`
+	LastError     string             `json:"last_error,omitempty"`
+	NextRetryAt   *string            `json:"next_retry_at,omitempty"`
+	FailureType   string             `json:"failure_type,omitempty"`
+	CreatedAt     string             `json:"created_at"`
+	UpdatedAt     string             `json:"updated_at"`
+	CompletedAt   *string            `json:"completed_at,omitempty"`
 }
 
 func jobToResponse(j *domain.Job) jobResponse {
@@ -79,6 +85,11 @@ func jobToResponse(j *domain.Job) jobResponse {
 		s := j.CompletedAt.UTC().Format("2006-01-02T15:04:05Z07:00")
 		completed = &s
 	}
+	var nextRetryAt *string
+	if j.NextRetryAt != nil {
+		s := j.NextRetryAt.UTC().Format("2006-01-02T15:04:05Z07:00")
+		nextRetryAt = &s
+	}
 	var cost *jobCostResponse
 	if j.Cost != nil {
 		cost = &jobCostResponse{
@@ -93,18 +104,23 @@ func jobToResponse(j *domain.Job) jobResponse {
 		}
 	}
 	return jobResponse{
-		ID:           j.ID,
-		RepositoryID: j.RepositoryID,
-		Prompt:       j.Prompt,
-		Status:       string(j.Status),
-		AgentType:    string(j.AgentType),
-		BranchName:   j.BranchName,
-		PRUrl:        j.PRUrl,
-		Logs:         logs,
-		Cost:         cost,
-		CreatedAt:    j.CreatedAt.UTC().Format("2006-01-02T15:04:05Z07:00"),
-		UpdatedAt:    j.UpdatedAt.UTC().Format("2006-01-02T15:04:05Z07:00"),
-		CompletedAt:  completed,
+		ID:            j.ID,
+		RepositoryID:  j.RepositoryID,
+		Prompt:        j.Prompt,
+		Status:        string(j.Status),
+		AgentType:     string(j.AgentType),
+		BranchName:    j.BranchName,
+		PRUrl:         j.PRUrl,
+		Logs:          logs,
+		Cost:          cost,
+		AttemptNumber: j.AttemptNumber,
+		MaxAttempts:   j.MaxAttempts,
+		LastError:     j.LastError,
+		NextRetryAt:   nextRetryAt,
+		FailureType:   string(j.FailureType),
+		CreatedAt:     j.CreatedAt.UTC().Format("2006-01-02T15:04:05Z07:00"),
+		UpdatedAt:     j.UpdatedAt.UTC().Format("2006-01-02T15:04:05Z07:00"),
+		CompletedAt:   completed,
 	}
 }
 
@@ -178,6 +194,26 @@ func (h *JobHandler) Get(c *gin.Context) {
 	}
 	if j == nil {
 		respond.JSONError(c, http.StatusNotFound, "NOT_FOUND", "job not found")
+		return
+	}
+	respond.JSONOK(c, jobToResponse(j))
+}
+
+func (h *JobHandler) Retry(c *gin.Context) {
+	uid := c.GetString(middleware.ContextUserIDKey)
+	id := c.Param("id")
+	j, err := h.svc.Retry(c.Request.Context(), uid, id)
+	if err != nil {
+		if errors.Is(err, service.ErrJobNotFound) {
+			respond.JSONError(c, http.StatusNotFound, "NOT_FOUND", "job not found")
+			return
+		}
+		if errors.Is(err, domain.ErrJobNotRetryable) {
+			respond.JSONError(c, http.StatusConflict, "NOT_RETRYABLE",
+				"Job cannot be retried. Only permanently failed jobs support manual retry.")
+			return
+		}
+		respond.JSONError(c, http.StatusBadGateway, "RUNNER_ERROR", "could not retry job")
 		return
 	}
 	respond.JSONOK(c, jobToResponse(j))

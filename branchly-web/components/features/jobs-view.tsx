@@ -26,6 +26,7 @@ function AgentBadge({ agentType }: { agentType: AgentType }) {
 const tabs: { id: "all" | JobStatus; label: string }[] = [
   { id: "all", label: "All" },
   { id: "running", label: "Running" },
+  { id: "retrying", label: "Retrying" },
   { id: "completed", label: "Completed" },
   { id: "failed", label: "Failed" },
 ];

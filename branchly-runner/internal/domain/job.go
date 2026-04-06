@@ -2,6 +2,7 @@ package domain
 
 import (
 	"context"
+	"math"
 	"time"
 )
 
@@ -29,6 +30,7 @@ type Repository struct {
 	Provider      GitProvider `bson:"provider"`
 	FullName      string      `bson:"full_name"`
 	CloneURL      string      `bson:"clone_url"`
+	DefaultBranch string      `bson:"default_branch"`
 }
 
 // RepositoryRepository provides read-only access to the repositories collection.
@@ -43,6 +45,14 @@ const (
 	JobStatusRunning   JobStatus = "running"
 	JobStatusCompleted JobStatus = "completed"
 	JobStatusFailed    JobStatus = "failed"
+	JobStatusRetrying  JobStatus = "retrying"
+)
+
+type FailureType string
+
+const (
+	FailureTypeTransient FailureType = "transient"
+	FailureTypePermanent FailureType = "permanent"
 )
 
 type LogLevel string
@@ -50,6 +60,7 @@ type LogLevel string
 const (
 	LogLevelInfo    LogLevel = "info"
 	LogLevelSuccess LogLevel = "success"
+	LogLevelWarn    LogLevel = "warning"
 	LogLevelError   LogLevel = "error"
 )
 
@@ -67,4 +78,38 @@ type JobCost struct {
 	TotalTokens  int64     `bson:"total_tokens"`
 	EstimatedUSD float64   `bson:"estimated_usd"`
 	DurationSecs float64   `bson:"duration_secs"`
+}
+
+type Job struct {
+	ID            string      `bson:"_id"`
+	UserID        string      `bson:"user_id"`
+	RepositoryID  string      `bson:"repository_id"`
+	Prompt        string      `bson:"prompt"`
+	Status        JobStatus   `bson:"status"`
+	AgentType     AgentType   `bson:"agent_type"`
+	BranchName    string      `bson:"branch_name"`
+	PRUrl         string      `bson:"pr_url,omitempty"`
+	Cost          *JobCost    `bson:"cost,omitempty"`
+	AttemptNumber int         `bson:"attempt_number"`
+	MaxAttempts   int         `bson:"max_attempts"`
+	LastError     string      `bson:"last_error,omitempty"`
+	NextRetryAt   *time.Time  `bson:"next_retry_at,omitempty"`
+	FailureType   FailureType `bson:"failure_type,omitempty"`
+	CreatedAt     time.Time   `bson:"created_at"`
+	UpdatedAt     time.Time   `bson:"updated_at"`
+	CompletedAt   *time.Time  `bson:"completed_at,omitempty"`
+}
+
+// CanRetry reports whether the job is eligible for automatic retry.
+func (j *Job) CanRetry() bool {
+	return j.AttemptNumber < j.MaxAttempts &&
+		j.FailureType == FailureTypeTransient
+}
+
+// BackoffDuration returns the exponential backoff delay before the next attempt.
+// Sequence: attempt 1 → 1 min, attempt 2 → 5 min, attempt 3 → 25 min.
+func (j *Job) BackoffDuration() time.Duration {
+	base := time.Minute
+	multiplier := math.Pow(5, float64(j.AttemptNumber-1))
+	return time.Duration(float64(base) * multiplier)
 }

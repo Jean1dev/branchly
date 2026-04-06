@@ -98,6 +98,7 @@ func main() {
 		protected.GET("/jobs", jobH.List)
 		protected.POST("/jobs", jobH.Create)
 		protected.GET("/jobs/:id", jobH.Get)
+		protected.POST("/jobs/:id/retry", jobH.Retry)
 		protected.GET("/jobs/:id/logs", sseH.StreamJobLogs)
 	}
 

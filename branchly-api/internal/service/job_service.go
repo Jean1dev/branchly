@@ -144,6 +144,57 @@ func (s *JobService) UpdateStatusInternal(ctx context.Context, jobID string, sta
 	return nil
 }
 
+func (s *JobService) Retry(ctx context.Context, userID string, jobID string) (*domain.Job, error) {
+	job, err := s.jobs.FindByIDForUser(ctx, jobID, userID)
+	if err != nil {
+		return nil, fmt.Errorf("job service: retry: find: %w", err)
+	}
+	if job == nil {
+		return nil, ErrJobNotFound
+	}
+
+	// Only permanently failed jobs support manual retry.
+	if job.Status != domain.JobStatusFailed {
+		return nil, domain.ErrJobNotRetryable
+	}
+
+	// Look up the repository so we can re-dispatch with all required fields.
+	repo, err := s.repos.FindByID(ctx, job.RepositoryID)
+	if err != nil {
+		return nil, fmt.Errorf("job service: retry: find repo: %w", err)
+	}
+	if repo == nil || repo.UserID != userID {
+		return nil, ErrRepositoryNotFound
+	}
+
+	if err := s.jobs.ResetForRetry(ctx, jobID); err != nil {
+		return nil, fmt.Errorf("job service: retry: reset: %w", err)
+	}
+
+	dispatchCtx, cancel := context.WithTimeout(ctx, 12*time.Second)
+	defer cancel()
+	err = s.runner.DispatchJob(dispatchCtx, infra.DispatchJobPayload{
+		JobID:          job.ID,
+		UserID:         userID,
+		RepositoryID:   repo.ID,
+		RepositoryName: repo.FullName,
+		DefaultBranch:  repo.DefaultBranch,
+		Prompt:         job.Prompt,
+		IntegrationID:  repo.IntegrationID,
+		Provider:       string(repo.Provider),
+		AgentType:      string(job.AgentType),
+	})
+	if err != nil {
+		_ = s.jobs.UpdateJobFields(ctx, job.ID, domain.JobStatusFailed, "", "", ptrTime(time.Now().UTC()))
+		return nil, fmt.Errorf("job service: retry: dispatch: %w", err)
+	}
+	if err := s.jobs.UpdateStatus(ctx, job.ID, domain.JobStatusRunning); err != nil {
+		return nil, fmt.Errorf("job service: retry: set running: %w", err)
+	}
+
+	return s.jobs.FindByIDForUser(ctx, jobID, userID)
+}
+
 func (s *JobService) AppendLogInternal(ctx context.Context, jobID string, entry domain.LogEntry) error {
 	if err := s.jobLogs.Append(ctx, jobID, entry); err != nil {
 		return fmt.Errorf("job service: internal log: %w", err)

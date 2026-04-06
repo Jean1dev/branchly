@@ -27,6 +27,8 @@ type jobUpdater interface {
 	UpdateJobFields(ctx context.Context, id string, status domain.JobStatus, prURL string, branchName string, completedAt *time.Time) error
 	VerifyJobOwner(ctx context.Context, id, userID string) error
 	SetCost(ctx context.Context, id string, cost *domain.JobCost) error
+	SetRetrying(ctx context.Context, id string, lastError string, failureType domain.FailureType, nextRetryAt time.Time) error
+	SetFailed(ctx context.Context, id string, lastError string, failureType domain.FailureType) error
 }
 
 // jobLogger is satisfied by *repository.JobLogRepository.
@@ -44,6 +46,8 @@ type RunJobInput struct {
 	IntegrationID  string
 	Provider       domain.GitProvider
 	AgentType      domain.AgentType
+	AttemptNumber  int
+	MaxAttempts    int
 }
 
 type Executor struct {
@@ -98,20 +102,47 @@ func (e *Executor) appendLog(jobID string, lvl domain.LogLevel, msg string) {
 	}
 }
 
-func (e *Executor) markFailed(jobID, branchName, msg string) {
-	e.appendMu.Lock()
-	defer e.appendMu.Unlock()
-	ctx, cancel := persistCtx()
-	defer cancel()
-	if err := e.jobLogs.Append(ctx, jobID, domain.LogEntry{
-		Timestamp: time.Now().UTC(),
-		Level:     domain.LogLevelError,
-		Message:   msg,
-	}); err != nil {
-		slog.Warn("append job log failed", "job_id", jobID, "error", err)
+// markFailedWithClassification classifies err and either schedules a retry (transient)
+// or marks the job as permanently failed.
+func (e *Executor) markFailedWithClassification(ctx context.Context, in RunJobInput, branchName string, err error) {
+	classifier := &FailureClassifier{}
+	failureType := classifier.Classify(err)
+
+	slog.Error("executor: job failed",
+		"job_id", in.JobID,
+		"attempt", in.AttemptNumber,
+		"failure_type", failureType,
+		"error", err.Error(),
+	)
+
+	if failureType == domain.FailureTypeTransient && in.AttemptNumber < in.MaxAttempts {
+		// Build a temporary Job to reuse BackoffDuration logic.
+		j := &domain.Job{AttemptNumber: in.AttemptNumber}
+		delay := j.BackoffDuration()
+		nextRetry := time.Now().Add(delay)
+
+		pctx, cancel := persistCtx()
+		defer cancel()
+		_ = e.jobs.SetRetrying(pctx, in.JobID, err.Error(), failureType, nextRetry)
+
+		e.appendLog(in.JobID, domain.LogLevelWarn,
+			fmt.Sprintf("Transient failure. Retrying in %s (attempt %d/%d)",
+				delay.Round(time.Second), in.AttemptNumber, in.MaxAttempts,
+			),
+		)
+		return
 	}
-	t := time.Now().UTC()
-	_ = e.jobs.UpdateJobFields(ctx, jobID, domain.JobStatusFailed, "", branchName, &t)
+
+	// Permanent failure or exhausted attempts.
+	pctx, cancel := persistCtx()
+	defer cancel()
+	_ = e.jobs.SetFailed(pctx, in.JobID, err.Error(), failureType)
+
+	e.appendLog(in.JobID, domain.LogLevelError,
+		fmt.Sprintf("Job failed permanently after %d attempt(s): %s",
+			in.AttemptNumber, err.Error(),
+		),
+	)
 }
 
 func (e *Executor) markCompleted(jobID, branchName, prURL, summary string) {
@@ -172,6 +203,14 @@ func jobScratchDir(workDir, jobID string) (string, error) {
 }
 
 func (e *Executor) Run(ctx context.Context, in RunJobInput) {
+	// Default attempt tracking if not provided (legacy dispatch path).
+	if in.AttemptNumber < 1 {
+		in.AttemptNumber = 1
+	}
+	if in.MaxAttempts < 1 {
+		in.MaxAttempts = 3
+	}
+
 	// Step 1: verify the job belongs to the stated user.
 	vctx, vcancel := persistCtx()
 	err := e.jobs.VerifyJobOwner(vctx, in.JobID, in.UserID)
@@ -194,7 +233,8 @@ func (e *Executor) Run(ctx context.Context, in RunJobInput) {
 			"repository_id", in.RepositoryID,
 			"user_id", in.UserID,
 		)
-		e.markFailed(in.JobID, branchName, "repository ownership validation failed")
+		e.markFailedWithClassification(ctx, in, branchName,
+			fmt.Errorf("repository ownership validation failed"))
 		return
 	}
 	if repo.FullName != in.RepositoryName {
@@ -203,7 +243,8 @@ func (e *Executor) Run(ctx context.Context, in RunJobInput) {
 			"payload_name", in.RepositoryName,
 			"db_name", repo.FullName,
 		)
-		e.markFailed(in.JobID, branchName, "repository name mismatch")
+		e.markFailedWithClassification(ctx, in, branchName,
+			fmt.Errorf("repository name mismatch"))
 		return
 	}
 
@@ -211,7 +252,8 @@ func (e *Executor) Run(ctx context.Context, in RunJobInput) {
 	selectedAgent, err := e.factory.Create(in.AgentType)
 	if err != nil {
 		slog.Error("unknown agent type", "job_id", in.JobID, "agent_type", in.AgentType)
-		e.markFailed(in.JobID, branchName, "unknown agent type: "+string(in.AgentType))
+		e.markFailedWithClassification(ctx, in, branchName,
+			fmt.Errorf("unknown agent type: %s", in.AgentType))
 		return
 	}
 
@@ -221,7 +263,8 @@ func (e *Executor) Run(ctx context.Context, in RunJobInput) {
 	icancel()
 	if integErr != nil || integration == nil {
 		slog.Error("runner: integration not found", "job_id", in.JobID, "integration_id", in.IntegrationID)
-		e.markFailed(in.JobID, branchName, "integration not found")
+		e.markFailedWithClassification(ctx, in, branchName,
+			fmt.Errorf("integration not found"))
 		return
 	}
 	if integration.UserID != in.UserID {
@@ -230,7 +273,8 @@ func (e *Executor) Run(ctx context.Context, in RunJobInput) {
 			"integration_user_id", integration.UserID,
 			"job_user_id", in.UserID,
 		)
-		e.markFailed(in.JobID, branchName, "integration ownership validation failed")
+		e.markFailedWithClassification(ctx, in, branchName,
+			fmt.Errorf("integration ownership validation failed"))
 		return
 	}
 
@@ -238,7 +282,8 @@ func (e *Executor) Run(ctx context.Context, in RunJobInput) {
 	token, err := infra.Decrypt(integration.EncryptedToken, e.encKey)
 	integration.EncryptedToken = "" // clear from memory
 	if err != nil {
-		e.markFailed(in.JobID, branchName, "could not decrypt repository credentials")
+		e.markFailedWithClassification(ctx, in, branchName,
+			fmt.Errorf("could not decrypt repository credentials"))
 		return
 	}
 	zeroToken := func() { token = "" }
@@ -247,11 +292,12 @@ func (e *Executor) Run(ctx context.Context, in RunJobInput) {
 	providerClient, err := e.providerFactory.Create(in.Provider)
 	if err != nil {
 		zeroToken()
-		e.markFailed(in.JobID, branchName, fmt.Sprintf("unsupported provider: %s", in.Provider))
+		e.markFailedWithClassification(ctx, in, branchName,
+			fmt.Errorf("unsupported provider: %s", in.Provider))
 		return
 	}
 
-	slog.Info("job execution started", "job_id", in.JobID, "repository", in.RepositoryName, "provider", in.Provider)
+	slog.Info("job execution started", "job_id", in.JobID, "repository", in.RepositoryName, "provider", in.Provider, "attempt", in.AttemptNumber)
 	startedAt := time.Now()
 
 	baseBranch := strings.TrimSpace(in.DefaultBranch)
@@ -262,7 +308,8 @@ func (e *Executor) Run(ctx context.Context, in RunJobInput) {
 	dir, err := jobScratchDir(e.workDir, in.JobID)
 	if err != nil {
 		zeroToken()
-		e.markFailed(in.JobID, branchName, fmt.Sprintf("temp dir: %v", err))
+		e.markFailedWithClassification(ctx, in, branchName,
+			fmt.Errorf("temp dir: %v", err))
 		return
 	}
 	defer func() { _ = os.RemoveAll(dir) }()
@@ -289,7 +336,8 @@ func (e *Executor) Run(ctx context.Context, in RunJobInput) {
 	if err != nil {
 		zeroToken()
 		slog.Warn("git clone failed", "job_id", in.JobID, "error", err)
-		e.markFailed(in.JobID, branchName, fmt.Sprintf("git clone failed: %v", err))
+		e.markFailedWithClassification(ctx, in, branchName,
+			fmt.Errorf("git clone failed: %v", err))
 		return
 	}
 	slog.Info("repository cloned", "job_id", in.JobID)
@@ -297,13 +345,15 @@ func (e *Executor) Run(ctx context.Context, in RunJobInput) {
 	gitRepo, err := git.PlainOpen(dir)
 	if err != nil {
 		zeroToken()
-		e.markFailed(in.JobID, branchName, fmt.Sprintf("open repo: %v", err))
+		e.markFailedWithClassification(ctx, in, branchName,
+			fmt.Errorf("open repo: %v", err))
 		return
 	}
 	wt, err := gitRepo.Worktree()
 	if err != nil {
 		zeroToken()
-		e.markFailed(in.JobID, branchName, fmt.Sprintf("worktree: %v", err))
+		e.markFailedWithClassification(ctx, in, branchName,
+			fmt.Errorf("worktree: %v", err))
 		return
 	}
 
@@ -313,7 +363,8 @@ func (e *Executor) Run(ctx context.Context, in RunJobInput) {
 		Create: true,
 	}); err != nil {
 		zeroToken()
-		e.markFailed(in.JobID, branchName, fmt.Sprintf("create branch: %v", err))
+		e.markFailedWithClassification(ctx, in, branchName,
+			fmt.Errorf("create branch: %v", err))
 		return
 	}
 
@@ -332,7 +383,8 @@ func (e *Executor) Run(ctx context.Context, in RunJobInput) {
 	if err != nil {
 		zeroToken()
 		slog.Warn("agent failed", "job_id", in.JobID, "error", err)
-		e.markFailed(in.JobID, branchName, fmt.Sprintf("agent failed: %v", err))
+		e.markFailedWithClassification(ctx, in, branchName,
+			fmt.Errorf("agent failed: %v", err))
 		return
 	}
 	slog.Info("agent finished", "job_id", in.JobID)
@@ -340,18 +392,21 @@ func (e *Executor) Run(ctx context.Context, in RunJobInput) {
 	st, err := wt.Status()
 	if err != nil {
 		zeroToken()
-		e.markFailed(in.JobID, branchName, fmt.Sprintf("git status: %v", err))
+		e.markFailedWithClassification(ctx, in, branchName,
+			fmt.Errorf("git status: %v", err))
 		return
 	}
 	if st.IsClean() {
 		zeroToken()
-		e.markFailed(in.JobID, branchName, "no file changes to commit after agent run")
+		e.markFailedWithClassification(ctx, in, branchName,
+			fmt.Errorf("no file changes to commit after agent run"))
 		return
 	}
 
 	if _, err := wt.Add("."); err != nil {
 		zeroToken()
-		e.markFailed(in.JobID, branchName, fmt.Sprintf("git add: %v", err))
+		e.markFailedWithClassification(ctx, in, branchName,
+			fmt.Errorf("git add: %v", err))
 		return
 	}
 
@@ -366,10 +421,12 @@ func (e *Executor) Run(ctx context.Context, in RunJobInput) {
 	if err != nil {
 		zeroToken()
 		if err == git.ErrEmptyCommit {
-			e.markFailed(in.JobID, branchName, "nothing to commit")
+			e.markFailedWithClassification(ctx, in, branchName,
+				fmt.Errorf("nothing to commit"))
 			return
 		}
-		e.markFailed(in.JobID, branchName, fmt.Sprintf("git commit: %v", err))
+		e.markFailedWithClassification(ctx, in, branchName,
+			fmt.Errorf("git commit: %v", err))
 		return
 	}
 
@@ -386,7 +443,8 @@ func (e *Executor) Run(ctx context.Context, in RunJobInput) {
 	if err != nil {
 		zeroToken()
 		slog.Warn("git push failed", "job_id", in.JobID, "error", err)
-		e.markFailed(in.JobID, branchName, fmt.Sprintf("git push failed: %v", err))
+		e.markFailedWithClassification(ctx, in, branchName,
+			fmt.Errorf("git push failed: %v", err))
 		return
 	}
 	slog.Info("branch pushed", "job_id", in.JobID)
@@ -406,7 +464,8 @@ func (e *Executor) Run(ctx context.Context, in RunJobInput) {
 	zeroToken()
 	if err != nil {
 		slog.Warn("open pull request failed", "job_id", in.JobID, "error", err)
-		e.markFailed(in.JobID, branchName, fmt.Sprintf("open pull request: %v", err))
+		e.markFailedWithClassification(ctx, in, branchName,
+			fmt.Errorf("open pull request: %v", err))
 		return
 	}
 

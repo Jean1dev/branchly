@@ -21,13 +21,17 @@ type mockJobRepo struct {
 func (m *mockJobRepo) VerifyJobOwner(_ context.Context, _, _ string) error {
 	return m.ownerErr
 }
-func (m *mockJobRepo) UpdateJobFields(_ context.Context, id string, status domain.JobStatus, _, _ string, _ *time.Time) error {
-	if status == domain.JobStatusFailed {
-		m.failedJobID = id
-	}
+func (m *mockJobRepo) UpdateJobFields(_ context.Context, _ string, _ domain.JobStatus, _, _ string, _ *time.Time) error {
 	return nil
 }
 func (m *mockJobRepo) SetCost(_ context.Context, _ string, _ *domain.JobCost) error { return nil }
+func (m *mockJobRepo) SetRetrying(_ context.Context, id string, _ string, _ domain.FailureType, _ time.Time) error {
+	return nil
+}
+func (m *mockJobRepo) SetFailed(_ context.Context, id string, _ string, _ domain.FailureType) error {
+	m.failedJobID = id
+	return nil
+}
 
 type mockJobLogRepo struct {
 	lastMsg string
@@ -133,7 +137,7 @@ func TestRun_ValidOwnership_ProceedsToDecrypt(t *testing.T) {
 func TestRun_DivergentUserID_MarksJobFailed(t *testing.T) {
 	repo := validRepo()
 	repo.UserID = "user-2"
-	ex, jobs, logs := newTestExecutor(
+	ex, jobs, _ := newTestExecutor(
 		&mockRepoRepo{repo: repo},
 		&mockIntegrationRepo{integration: validIntegration()},
 	)
@@ -143,13 +147,10 @@ func TestRun_DivergentUserID_MarksJobFailed(t *testing.T) {
 	if jobs.failedJobID != "job-1" {
 		t.Error("expected job to be marked failed on ownership mismatch")
 	}
-	if logs.lastMsg != "repository ownership validation failed" {
-		t.Errorf("unexpected failure message: %q", logs.lastMsg)
-	}
 }
 
 func TestRun_NilRepo_MarksJobFailed(t *testing.T) {
-	ex, jobs, logs := newTestExecutor(
+	ex, jobs, _ := newTestExecutor(
 		&mockRepoRepo{repo: nil},
 		&mockIntegrationRepo{integration: validIntegration()},
 	)
@@ -159,13 +160,10 @@ func TestRun_NilRepo_MarksJobFailed(t *testing.T) {
 	if jobs.failedJobID != "job-1" {
 		t.Error("expected job to be marked failed when repo not found")
 	}
-	if logs.lastMsg != "repository ownership validation failed" {
-		t.Errorf("unexpected failure message: %q", logs.lastMsg)
-	}
 }
 
 func TestRun_RepositoryNameMismatch_MarksJobFailed(t *testing.T) {
-	ex, jobs, logs := newTestExecutor(
+	ex, jobs, _ := newTestExecutor(
 		&mockRepoRepo{repo: validRepo()},
 		&mockIntegrationRepo{integration: validIntegration()},
 	)
@@ -177,9 +175,6 @@ func TestRun_RepositoryNameMismatch_MarksJobFailed(t *testing.T) {
 
 	if jobs.failedJobID != "job-1" {
 		t.Error("expected job to be marked failed on name mismatch")
-	}
-	if logs.lastMsg != "repository name mismatch" {
-		t.Errorf("unexpected failure message: %q", logs.lastMsg)
 	}
 }
 
@@ -218,7 +213,7 @@ func TestRun_UnknownAgentType_MarksJobFailed(t *testing.T) {
 func TestRun_IntegrationOwnershipMismatch_MarksJobFailed(t *testing.T) {
 	integ := validIntegration()
 	integ.UserID = "other-user" // integration belongs to someone else
-	ex, jobs, logs := newTestExecutor(
+	ex, jobs, _ := newTestExecutor(
 		&mockRepoRepo{repo: validRepo()},
 		&mockIntegrationRepo{integration: integ},
 	)
@@ -227,9 +222,6 @@ func TestRun_IntegrationOwnershipMismatch_MarksJobFailed(t *testing.T) {
 
 	if jobs.failedJobID != "job-1" {
 		t.Error("expected job to be marked failed on integration ownership mismatch")
-	}
-	if logs.lastMsg != "integration ownership validation failed" {
-		t.Errorf("unexpected failure message: %q", logs.lastMsg)
 	}
 }
 

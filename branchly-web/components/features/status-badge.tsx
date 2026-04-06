@@ -6,6 +6,7 @@ const labels: Record<JobStatus, string> = {
   completed: "Completed",
   running: "Running",
   failed: "Failed",
+  retrying: "Retrying",
 };
 
 const variants: Record<
@@ -16,6 +17,7 @@ const variants: Record<
   completed: "success",
   running: "warning",
   failed: "error",
+  retrying: "warning",
 };
 
 export function StatusBadge({ status }: { status: JobStatus }) {
