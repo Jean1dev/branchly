@@ -33,6 +33,7 @@ type CreateJobInput struct {
 	RepositoryID string
 	Prompt       string
 	AgentType    domain.AgentType
+	ParentJobID  string // optional — if set, this job is a thread continuation
 }
 
 func (s *JobService) Create(ctx context.Context, userID string, in CreateJobInput) (*domain.Job, error) {
@@ -66,6 +67,32 @@ func (s *JobService) Create(ctx context.Context, userID string, in CreateJobInpu
 		CreatedAt:    now,
 		UpdatedAt:    now,
 	}
+
+	// Resolve thread context when this is a continuation job.
+	var parentBranchName string
+	if in.ParentJobID != "" {
+		parent, err := s.jobs.FindByIDForUser(ctx, in.ParentJobID, userID)
+		if err != nil {
+			return nil, fmt.Errorf("job service: create: find parent: %w", err)
+		}
+		if parent == nil {
+			return nil, ErrJobNotFound
+		}
+		// Inherit thread identity from parent (first job sets thread_id = its own ID).
+		threadID := parent.ThreadID
+		if threadID == "" {
+			threadID = parent.ID
+		}
+		job.ThreadID = threadID
+		job.ParentJobID = parent.ID
+		job.ThreadPosition = parent.ThreadPosition + 1
+		// Continue work on the same branch so commits stack cleanly.
+		parentBranchName = parent.BranchName
+	} else {
+		// Root job: thread_id equals its own ID so FindByThreadID works uniformly.
+		job.ThreadID = job.ID
+	}
+
 	if err := s.jobs.Create(ctx, job); err != nil {
 		return nil, fmt.Errorf("job service: create: insert: %w", err)
 	}
@@ -82,6 +109,9 @@ func (s *JobService) Create(ctx context.Context, userID string, in CreateJobInpu
 		IntegrationID:  repo.IntegrationID,
 		Provider:       string(repo.Provider),
 		AgentType:      string(job.AgentType),
+		ThreadID:       job.ThreadID,
+		ParentJobID:    job.ParentJobID,
+		BranchName:     parentBranchName,
 	})
 	if err != nil {
 		_ = s.jobs.UpdateJobFields(ctx, job.ID, domain.JobStatusFailed, "", "", ptrTime(time.Now().UTC()))
@@ -92,6 +122,29 @@ func (s *JobService) Create(ctx context.Context, userID string, in CreateJobInpu
 	}
 	job.Status = domain.JobStatusRunning
 	return job, nil
+}
+
+// GetThread returns all jobs that belong to the same thread as jobID, ordered
+// by thread_position ascending. Legacy jobs without a thread_id are returned
+// as a single-element slice.
+func (s *JobService) GetThread(ctx context.Context, userID, jobID string) ([]*domain.Job, error) {
+	job, err := s.jobs.FindByIDForUser(ctx, jobID, userID)
+	if err != nil {
+		return nil, fmt.Errorf("job service: get thread: find root: %w", err)
+	}
+	if job == nil {
+		return nil, ErrJobNotFound
+	}
+	threadID := job.ThreadID
+	if threadID == "" {
+		// Legacy job created before thread support — return as single-item list.
+		return []*domain.Job{job}, nil
+	}
+	jobs, err := s.jobs.FindByThreadID(ctx, threadID, userID)
+	if err != nil {
+		return nil, fmt.Errorf("job service: get thread: list: %w", err)
+	}
+	return jobs, nil
 }
 
 func ptrTime(t time.Time) *time.Time {

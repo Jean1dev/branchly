@@ -64,24 +64,28 @@ type JobCost struct {
 }
 
 type Job struct {
-	ID            string      `bson:"_id"`
-	UserID        string      `bson:"user_id"`
-	RepositoryID  string      `bson:"repository_id"`
-	Prompt        string      `bson:"prompt"`
-	Status        JobStatus   `bson:"status"`
-	AgentType     AgentType   `bson:"agent_type"`
-	BranchName    string      `bson:"branch_name"`
-	PRUrl         string      `bson:"pr_url,omitempty"`
-	Logs          []LogEntry  `bson:"logs,omitempty"`
-	Cost          *JobCost    `bson:"cost,omitempty"`
-	AttemptNumber int         `bson:"attempt_number"`
-	MaxAttempts   int         `bson:"max_attempts"`
-	LastError     string      `bson:"last_error,omitempty"`
-	NextRetryAt   *time.Time  `bson:"next_retry_at,omitempty"`
-	FailureType   FailureType `bson:"failure_type,omitempty"`
-	CreatedAt     time.Time   `bson:"created_at"`
-	UpdatedAt     time.Time   `bson:"updated_at"`
-	CompletedAt   *time.Time  `bson:"completed_at,omitempty"`
+	ID             string      `bson:"_id"`
+	UserID         string      `bson:"user_id"`
+	RepositoryID   string      `bson:"repository_id"`
+	Prompt         string      `bson:"prompt"`
+	Status         JobStatus   `bson:"status"`
+	AgentType      AgentType   `bson:"agent_type"`
+	BranchName     string      `bson:"branch_name"`
+	PRUrl          string      `bson:"pr_url,omitempty"`
+	Logs           []LogEntry  `bson:"logs,omitempty"`
+	Cost           *JobCost    `bson:"cost,omitempty"`
+	AttemptNumber  int         `bson:"attempt_number"`
+	MaxAttempts    int         `bson:"max_attempts"`
+	LastError      string      `bson:"last_error,omitempty"`
+	NextRetryAt    *time.Time  `bson:"next_retry_at,omitempty"`
+	FailureType    FailureType `bson:"failure_type,omitempty"`
+	// Thread fields — groups related jobs into a conversation.
+	ThreadID       string      `bson:"thread_id,omitempty"`
+	ParentJobID    string      `bson:"parent_job_id,omitempty"`
+	ThreadPosition int         `bson:"thread_position"`
+	CreatedAt      time.Time   `bson:"created_at"`
+	UpdatedAt      time.Time   `bson:"updated_at"`
+	CompletedAt    *time.Time  `bson:"completed_at,omitempty"`
 }
 
 // ErrJobNotRetryable is returned when a retry is requested on a job that cannot be retried.
@@ -91,6 +95,7 @@ type JobRepository interface {
 	Create(ctx context.Context, job *Job) error
 	FindByID(ctx context.Context, id string) (*Job, error)
 	FindByUserID(ctx context.Context, userID string, status *JobStatus, repositoryID *string) ([]*Job, error)
+	FindByThreadID(ctx context.Context, threadID string, userID string) ([]*Job, error)
 	CountActiveByUserID(ctx context.Context, userID string) (int64, error)
 	UpdateStatus(ctx context.Context, id string, status JobStatus) error
 	UpdateJobFields(ctx context.Context, id string, status JobStatus, prURL string, branchName string, completedAt *time.Time) error

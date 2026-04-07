@@ -34,6 +34,9 @@ func (m *mockJobSvc) Get(_ context.Context, _, _ string) (*domain.Job, error) {
 func (m *mockJobSvc) Retry(_ context.Context, _, _ string) (*domain.Job, error) {
 	return m.job, m.err
 }
+func (m *mockJobSvc) GetThread(_ context.Context, _, _ string) ([]*domain.Job, error) {
+	return nil, nil
+}
 
 // ---- helpers ----
 

@@ -78,6 +78,9 @@ export type ApiJob = {
   last_error?: string | null;
   next_retry_at?: string | null;
   failure_type?: string | null;
+  thread_id?: string | null;
+  parent_job_id?: string | null;
+  thread_position?: number;
 };
 
 function mapJobStatus(s: string): JobStatus {
@@ -209,6 +212,9 @@ export function mapJob(
     lastError: j.last_error ?? null,
     nextRetryAt: j.next_retry_at ?? null,
     failureType: mapFailureType(j.failure_type),
+    threadId: j.thread_id ?? null,
+    parentJobId: j.parent_job_id ?? null,
+    threadPosition: j.thread_position ?? 0,
   };
 }
 

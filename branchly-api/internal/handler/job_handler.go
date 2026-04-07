@@ -18,6 +18,7 @@ type jobService interface {
 	List(ctx context.Context, userID string, status *domain.JobStatus, repositoryID *string) ([]*domain.Job, error)
 	Get(ctx context.Context, userID, jobID string) (*domain.Job, error)
 	Retry(ctx context.Context, userID string, jobID string) (*domain.Job, error)
+	GetThread(ctx context.Context, userID, jobID string) ([]*domain.Job, error)
 }
 
 type JobHandler struct {
@@ -32,6 +33,7 @@ type createJobRequest struct {
 	RepositoryID string `json:"repository_id" binding:"required"`
 	Prompt       string `json:"prompt" binding:"required"`
 	AgentType    string `json:"agent_type"`
+	ParentJobID  string `json:"parent_job_id"` // optional — continues an existing thread
 }
 
 type logEntryResponse struct {
@@ -52,23 +54,26 @@ type jobCostResponse struct {
 }
 
 type jobResponse struct {
-	ID            string             `json:"id"`
-	RepositoryID  string             `json:"repository_id"`
-	Prompt        string             `json:"prompt"`
-	Status        string             `json:"status"`
-	AgentType     string             `json:"agent_type"`
-	BranchName    string             `json:"branch_name"`
-	PRUrl         string             `json:"pr_url,omitempty"`
-	Logs          []logEntryResponse `json:"logs,omitempty"`
-	Cost          *jobCostResponse   `json:"cost,omitempty"`
-	AttemptNumber int                `json:"attempt_number"`
-	MaxAttempts   int                `json:"max_attempts"`
-	LastError     string             `json:"last_error,omitempty"`
-	NextRetryAt   *string            `json:"next_retry_at,omitempty"`
-	FailureType   string             `json:"failure_type,omitempty"`
-	CreatedAt     string             `json:"created_at"`
-	UpdatedAt     string             `json:"updated_at"`
-	CompletedAt   *string            `json:"completed_at,omitempty"`
+	ID             string             `json:"id"`
+	RepositoryID   string             `json:"repository_id"`
+	Prompt         string             `json:"prompt"`
+	Status         string             `json:"status"`
+	AgentType      string             `json:"agent_type"`
+	BranchName     string             `json:"branch_name"`
+	PRUrl          string             `json:"pr_url,omitempty"`
+	Logs           []logEntryResponse `json:"logs,omitempty"`
+	Cost           *jobCostResponse   `json:"cost,omitempty"`
+	AttemptNumber  int                `json:"attempt_number"`
+	MaxAttempts    int                `json:"max_attempts"`
+	LastError      string             `json:"last_error,omitempty"`
+	NextRetryAt    *string            `json:"next_retry_at,omitempty"`
+	FailureType    string             `json:"failure_type,omitempty"`
+	ThreadID       string             `json:"thread_id,omitempty"`
+	ParentJobID    string             `json:"parent_job_id,omitempty"`
+	ThreadPosition int                `json:"thread_position"`
+	CreatedAt      string             `json:"created_at"`
+	UpdatedAt      string             `json:"updated_at"`
+	CompletedAt    *string            `json:"completed_at,omitempty"`
 }
 
 func jobToResponse(j *domain.Job) jobResponse {
@@ -104,23 +109,26 @@ func jobToResponse(j *domain.Job) jobResponse {
 		}
 	}
 	return jobResponse{
-		ID:            j.ID,
-		RepositoryID:  j.RepositoryID,
-		Prompt:        j.Prompt,
-		Status:        string(j.Status),
-		AgentType:     string(j.AgentType),
-		BranchName:    j.BranchName,
-		PRUrl:         j.PRUrl,
-		Logs:          logs,
-		Cost:          cost,
-		AttemptNumber: j.AttemptNumber,
-		MaxAttempts:   j.MaxAttempts,
-		LastError:     j.LastError,
-		NextRetryAt:   nextRetryAt,
-		FailureType:   string(j.FailureType),
-		CreatedAt:     j.CreatedAt.UTC().Format("2006-01-02T15:04:05Z07:00"),
-		UpdatedAt:     j.UpdatedAt.UTC().Format("2006-01-02T15:04:05Z07:00"),
-		CompletedAt:   completed,
+		ID:             j.ID,
+		RepositoryID:   j.RepositoryID,
+		Prompt:         j.Prompt,
+		Status:         string(j.Status),
+		AgentType:      string(j.AgentType),
+		BranchName:     j.BranchName,
+		PRUrl:          j.PRUrl,
+		Logs:           logs,
+		Cost:           cost,
+		AttemptNumber:  j.AttemptNumber,
+		MaxAttempts:    j.MaxAttempts,
+		LastError:      j.LastError,
+		NextRetryAt:    nextRetryAt,
+		FailureType:    string(j.FailureType),
+		ThreadID:       j.ThreadID,
+		ParentJobID:    j.ParentJobID,
+		ThreadPosition: j.ThreadPosition,
+		CreatedAt:      j.CreatedAt.UTC().Format("2006-01-02T15:04:05Z07:00"),
+		UpdatedAt:      j.UpdatedAt.UTC().Format("2006-01-02T15:04:05Z07:00"),
+		CompletedAt:    completed,
 	}
 }
 
@@ -140,6 +148,7 @@ func (h *JobHandler) Create(c *gin.Context) {
 		RepositoryID: req.RepositoryID,
 		Prompt:       req.Prompt,
 		AgentType:    domain.AgentType(req.AgentType),
+		ParentJobID:  req.ParentJobID,
 	})
 	if err != nil {
 		if errors.Is(err, service.ErrRepositoryNotFound) {
@@ -217,4 +226,28 @@ func (h *JobHandler) Retry(c *gin.Context) {
 		return
 	}
 	respond.JSONOK(c, jobToResponse(j))
+}
+
+// GetThread returns all jobs in the same thread as the given job ID, ordered
+// by thread_position ascending. Legacy jobs without a thread are returned as a
+// single-element list so the caller always gets a consistent shape.
+func (h *JobHandler) GetThread(c *gin.Context) {
+	uid := c.GetString(middleware.ContextUserIDKey)
+	id := c.Param("id")
+	jobs, err := h.svc.GetThread(c.Request.Context(), uid, id)
+	if err != nil {
+		if errors.Is(err, service.ErrJobNotFound) {
+			respond.JSONError(c, http.StatusNotFound, "NOT_FOUND", "job not found")
+			return
+		}
+		respond.JSONError(c, http.StatusInternalServerError, "INTERNAL_ERROR", "could not load thread")
+		return
+	}
+	out := make([]jobResponse, 0, len(jobs))
+	for _, j := range jobs {
+		jr := jobToResponse(j)
+		jr.Logs = nil // logs are fetched per-job via GET /jobs/:id
+		out = append(out, jr)
+	}
+	respond.JSONOK(c, out)
 }

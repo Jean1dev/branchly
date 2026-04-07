@@ -21,6 +21,10 @@ type DispatchJobPayload struct {
 	IntegrationID  string `json:"integration_id"`
 	Provider       string `json:"provider"`
 	AgentType      string `json:"agent_type"`
+	// Thread context — set when this job continues an existing thread.
+	ThreadID    string `json:"thread_id,omitempty"`
+	ParentJobID string `json:"parent_job_id,omitempty"`
+	BranchName  string `json:"branch_name,omitempty"` // reuse parent branch when set
 }
 
 type RunnerClient struct {

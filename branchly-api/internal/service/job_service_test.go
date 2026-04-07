@@ -45,6 +45,9 @@ func (m *mockJobRepo) ResetForRetry(_ context.Context, _ string) error {
 	m.resetForRetryCalled = true
 	return nil
 }
+func (m *mockJobRepo) FindByThreadID(_ context.Context, _, _ string) ([]*domain.Job, error) {
+	return nil, nil
+}
 
 type mockJobLogRepo struct{}
 
