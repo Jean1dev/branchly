@@ -90,6 +90,9 @@ export interface Job {
   lastError: string | null;
   nextRetryAt: string | null;
   failureType: FailureType;
+  threadId: string | null;
+  parentJobId: string | null;
+  threadPosition: number;
 }
 
 export interface JobLog {

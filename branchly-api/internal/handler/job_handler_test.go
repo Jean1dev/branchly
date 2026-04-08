@@ -34,6 +34,9 @@ func (m *mockJobSvc) Get(_ context.Context, _, _ string) (*domain.Job, error) {
 func (m *mockJobSvc) Retry(_ context.Context, _, _ string) (*domain.Job, error) {
 	return m.job, m.err
 }
+func (m *mockJobSvc) GetThread(_ context.Context, _, _ string) ([]*domain.Job, error) {
+	return nil, nil
+}
 
 // ---- helpers ----
 
@@ -133,6 +136,20 @@ func TestCreate_MissingAgentType_Returns400(t *testing.T) {
 	if w.Code != http.StatusBadRequest {
 		t.Errorf("expected 400, got %d", w.Code)
 	}
+}
+
+func TestCreate_ParentJobNotFound_Returns404(t *testing.T) {
+	r := testRouter(&mockJobSvc{err: service.ErrJobNotFound})
+	w := postJob(r, map[string]any{
+		"repository_id": "repo-1",
+		"prompt":        "follow-up",
+		"agent_type":    "claude-code",
+		"parent_job_id": "nonexistent-parent",
+	})
+	if w.Code != http.StatusNotFound {
+		t.Errorf("expected 404, got %d — body: %s", w.Code, w.Body.String())
+	}
+	checkErrorCode(t, w.Body.Bytes(), "NOT_FOUND")
 }
 
 // checkErrorCode asserts that the JSON body contains the expected error code.

@@ -89,6 +89,31 @@ func (r *mongoJobRepository) FindByUserID(ctx context.Context, userID string, st
 	return list, nil
 }
 
+func (r *mongoJobRepository) FindByThreadID(ctx context.Context, threadID string, userID string) ([]*domain.Job, error) {
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	filter := bson.M{"thread_id": threadID, "user_id": userID}
+	opts := options.Find().SetSort(bson.D{{Key: "thread_position", Value: 1}})
+	cur, err := r.coll.Find(ctx, filter, opts)
+	if err != nil {
+		return nil, fmt.Errorf("job repository: find by thread: %w", err)
+	}
+	defer cur.Close(ctx)
+	var list []*domain.Job
+	for cur.Next(ctx) {
+		var item domain.Job
+		if err := cur.Decode(&item); err != nil {
+			return nil, fmt.Errorf("job repository: find by thread decode: %w", err)
+		}
+		cp := item
+		list = append(list, &cp)
+	}
+	if err := cur.Err(); err != nil {
+		return nil, fmt.Errorf("job repository: find by thread cursor: %w", err)
+	}
+	return list, nil
+}
+
 func (r *mongoJobRepository) CountActiveByUserID(ctx context.Context, userID string) (int64, error) {
 	ctx, cancel := context.WithTimeout(ctx, 3*time.Second)
 	defer cancel()

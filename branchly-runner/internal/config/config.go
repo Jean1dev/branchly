@@ -21,6 +21,7 @@ type Config struct {
 	MaxConcurrentJobs int
 	WorkDir           string
 	ShutdownTimeout   time.Duration
+	Environment       string
 }
 
 func Load() (*Config, error) {
@@ -72,6 +73,8 @@ func Load() (*Config, error) {
 		}
 		shutdownTimeout = d
 	}
+	environment := strings.ToLower(strings.TrimSpace(os.Getenv("ENVIRONMENT")))
+
 	return &Config{
 		Port:              port,
 		MongoURI:          mongoURI,
@@ -81,5 +84,6 @@ func Load() (*Config, error) {
 		MaxConcurrentJobs: maxJobs,
 		WorkDir:           workDir,
 		ShutdownTimeout:   shutdownTimeout,
+		Environment:       environment,
 	}, nil
 }
