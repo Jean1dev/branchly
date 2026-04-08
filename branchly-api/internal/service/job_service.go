@@ -70,6 +70,7 @@ func (s *JobService) Create(ctx context.Context, userID string, in CreateJobInpu
 
 	// Resolve thread context when this is a continuation job.
 	var parentBranchName string
+	var parentPRUrl string
 	if in.ParentJobID != "" {
 		parent, err := s.jobs.FindByIDForUser(ctx, in.ParentJobID, userID)
 		if err != nil {
@@ -88,6 +89,8 @@ func (s *JobService) Create(ctx context.Context, userID string, in CreateJobInpu
 		job.ThreadPosition = parent.ThreadPosition + 1
 		// Continue work on the same branch so commits stack cleanly.
 		parentBranchName = parent.BranchName
+		// Inherit the existing PR URL so the runner doesn't open a duplicate.
+		parentPRUrl = parent.PRUrl
 	} else {
 		// Root job: thread_id equals its own ID so FindByThreadID works uniformly.
 		job.ThreadID = job.ID
@@ -112,6 +115,7 @@ func (s *JobService) Create(ctx context.Context, userID string, in CreateJobInpu
 		ThreadID:       job.ThreadID,
 		ParentJobID:    job.ParentJobID,
 		BranchName:     parentBranchName,
+		ParentPRUrl:    parentPRUrl,
 	})
 	if err != nil {
 		_ = s.jobs.UpdateJobFields(ctx, job.ID, domain.JobStatusFailed, "", "", ptrTime(time.Now().UTC()))

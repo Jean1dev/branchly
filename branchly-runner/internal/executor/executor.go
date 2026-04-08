@@ -48,6 +48,10 @@ type RunJobInput struct {
 	AgentType      domain.AgentType
 	AttemptNumber  int
 	MaxAttempts    int
+	// Thread continuation fields — non-empty for follow-up jobs.
+	ParentJobID  string // signals this is a continuation job
+	ParentBranch string // existing branch to clone and push to
+	ParentPRUrl  string // existing PR URL to inherit (skip opening a new one)
 }
 
 type Executor struct {
@@ -220,8 +224,15 @@ func (e *Executor) Run(ctx context.Context, in RunJobInput) {
 		return
 	}
 
-	// Step 2: derive branch name from the prompt (no external I/O).
-	branchName := slug.GenerateSlug(in.Prompt)
+	// Step 2: determine branch name.
+	// Follow-up jobs reuse the parent branch; root jobs generate a new slug.
+	isFollowUp := in.ParentBranch != ""
+	var branchName string
+	if isFollowUp {
+		branchName = in.ParentBranch
+	} else {
+		branchName = slug.GenerateSlug(in.Prompt)
+	}
 
 	// Step 3: validate repository ownership in the runner's own database.
 	rctx, rcancel := persistCtx()
@@ -320,14 +331,22 @@ func (e *Executor) Run(ctx context.Context, in RunJobInput) {
 		cloneURL = fmt.Sprintf("https://github.com/%s.git", in.RepositoryName)
 	}
 
-	e.appendLog(in.JobID, domain.LogLevelInfo, "Cloning repository…")
 	// Both GitHub OAuth and GitLab PAT use the same BasicAuth format.
 	auth := &githttp.BasicAuth{Username: "oauth2", Password: token}
+
+	// For follow-up jobs clone the existing branch; for root jobs clone the
+	// default branch and then create a new feature branch on top.
+	cloneBranch := baseBranch
+	if isFollowUp {
+		cloneBranch = branchName
+	}
+
+	e.appendLog(in.JobID, domain.LogLevelInfo, "Cloning repository…")
 	cloneCtx, cloneCancel := context.WithTimeout(ctx, 60*time.Second)
 	defer cloneCancel()
 	_, err = git.PlainCloneContext(cloneCtx, dir, false, &git.CloneOptions{
 		URL:           cloneURL,
-		ReferenceName: plumbing.NewBranchReferenceName(baseBranch),
+		ReferenceName: plumbing.NewBranchReferenceName(cloneBranch),
 		SingleBranch:  true,
 		Depth:         1,
 		Auth:          auth,
@@ -357,15 +376,20 @@ func (e *Executor) Run(ctx context.Context, in RunJobInput) {
 		return
 	}
 
-	e.appendLog(in.JobID, domain.LogLevelInfo, fmt.Sprintf("Creating branch %s", branchName))
-	if err := wt.Checkout(&git.CheckoutOptions{
-		Branch: plumbing.NewBranchReferenceName(branchName),
-		Create: true,
-	}); err != nil {
-		zeroToken()
-		e.markFailedWithClassification(ctx, in, branchName,
-			fmt.Errorf("create branch: %v", err))
-		return
+	if isFollowUp {
+		// We are already on the parent branch — no new branch needed.
+		e.appendLog(in.JobID, domain.LogLevelInfo, fmt.Sprintf("Using existing branch %s", branchName))
+	} else {
+		e.appendLog(in.JobID, domain.LogLevelInfo, fmt.Sprintf("Creating branch %s", branchName))
+		if err := wt.Checkout(&git.CheckoutOptions{
+			Branch: plumbing.NewBranchReferenceName(branchName),
+			Create: true,
+		}); err != nil {
+			zeroToken()
+			e.markFailedWithClassification(ctx, in, branchName,
+				fmt.Errorf("create branch: %v", err))
+			return
+		}
 	}
 
 	e.appendLog(in.JobID, domain.LogLevelInfo, "Running agent…")
@@ -449,24 +473,32 @@ func (e *Executor) Run(ctx context.Context, in RunJobInput) {
 	}
 	slog.Info("branch pushed", "job_id", in.JobID)
 
-	e.appendLog(in.JobID, domain.LogLevelInfo, "Opening pull request…")
-	prCtx, prCancel := context.WithTimeout(ctx, 15*time.Second)
-	defer prCancel()
-
-	prURL, err := providerClient.OpenPR(prCtx, token, domain.PROptions{
-		RepoFullName: in.RepositoryName,
-		Title:        "Branchly: " + truncateRunes(in.Prompt, 60),
-		Body:         summary,
-		Head:         branchName,
-		Base:         baseBranch,
-	})
-	// Token is no longer needed — zero it before handling the result.
-	zeroToken()
-	if err != nil {
-		slog.Warn("open pull request failed", "job_id", in.JobID, "error", err)
-		e.markFailedWithClassification(ctx, in, branchName,
-			fmt.Errorf("open pull request: %v", err))
-		return
+	var prURL string
+	if isFollowUp && in.ParentPRUrl != "" {
+		// Follow-up with an existing PR: new commits were pushed to the same
+		// branch, so the PR updates automatically — no need to open another one.
+		zeroToken()
+		prURL = in.ParentPRUrl
+		e.appendLog(in.JobID, domain.LogLevelInfo, "Changes pushed to existing branch — PR updated automatically")
+	} else {
+		// Root job, or follow-up after a failed parent (no PR yet): open a PR.
+		e.appendLog(in.JobID, domain.LogLevelInfo, "Opening pull request…")
+		prCtx, prCancel := context.WithTimeout(ctx, 15*time.Second)
+		defer prCancel()
+		prURL, err = providerClient.OpenPR(prCtx, token, domain.PROptions{
+			RepoFullName: in.RepositoryName,
+			Title:        "Branchly: " + truncateRunes(in.Prompt, 60),
+			Body:         summary,
+			Head:         branchName,
+			Base:         baseBranch,
+		})
+		zeroToken()
+		if err != nil {
+			slog.Warn("open pull request failed", "job_id", in.JobID, "error", err)
+			e.markFailedWithClassification(ctx, in, branchName,
+				fmt.Errorf("open pull request: %v", err))
+			return
+		}
 	}
 
 	slog.Info("job completed", "job_id", in.JobID, "pr_url", prURL)
