@@ -1,9 +1,12 @@
 "use client";
 
+import { JobCostCard } from "@/components/features/job-cost-card";
 import { JobLogsLive } from "@/components/features/job-logs-live";
 import { LogTerminal } from "@/components/features/log-terminal";
 import { StatusBadge } from "@/components/features/status-badge";
 import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
+import { Separator } from "@/components/ui/separator";
 import { mapJob, mapJobLog, unwrapApiData, type ApiJob } from "@/lib/map-api";
 import { formatDate, formatDurationMs } from "@/lib/utils";
 import type { Job, JobLog } from "@/types";
@@ -53,43 +56,50 @@ function ThreadTurn({ job, initialLogs, isLatest }: TurnProps) {
 
         {/* Agent result card */}
         <div className="rounded-lg border border-gray-200 dark:border-gray-800">
-          {/* Header row */}
-          <div className="flex flex-wrap items-center gap-3 border-b border-gray-200 px-4 py-3 dark:border-gray-800">
+          {/* Header row: status + branch */}
+          <div className="flex flex-wrap items-center gap-3 px-4 py-3">
             <StatusBadge status={job.status} />
             {job.branchName ? (
               <span className="font-mono text-xs text-gray-500 dark:text-gray-400">
                 {job.branchName}
               </span>
             ) : null}
+          </div>
+
+          {/* Meta row: dates, duration, error */}
+          <div className="flex flex-wrap items-center gap-x-6 gap-y-1 border-t border-gray-200 px-4 py-2 text-xs text-gray-500 dark:border-gray-800 dark:text-gray-400">
+            <span>{formatDate(job.createdAt)}</span>
+            {job.completedAt ? (
+              <span>Duration: {formatDurationMs(job.createdAt, job.completedAt)}</span>
+            ) : null}
+            {job.lastError ? (
+              <span className="text-red-500 dark:text-red-400" title={job.lastError}>
+                Error: {job.lastError.slice(0, 100)}{job.lastError.length > 100 ? "…" : ""}
+              </span>
+            ) : null}
+          </div>
+
+          {/* Pull request row */}
+          <div className="border-t border-gray-200 px-4 py-3 dark:border-gray-800">
+            <p className="text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">
+              Pull request
+            </p>
             {job.prUrl ? (
               <a
                 href={job.prUrl}
                 target="_blank"
                 rel="noreferrer"
-                className="ml-auto text-xs font-medium hover:underline"
+                className="mt-1 inline-block text-sm font-medium hover:underline"
               >
-                Open PR →
+                Open pull request ↗
               </a>
-            ) : null}
-          </div>
-
-          {/* Meta row */}
-          <div className="flex flex-wrap items-center gap-x-6 gap-y-1 px-4 py-2 text-xs text-gray-500 dark:text-gray-400">
-            <span>{formatDate(job.createdAt)}</span>
-            {job.completedAt ? (
-              <span>Duration: {formatDurationMs(job.createdAt, job.completedAt)}</span>
-            ) : null}
-            {job.cost ? (
-              <span>
-                ~${job.cost.estimatedUSD < 0.01 ? "<0.01" : job.cost.estimatedUSD.toFixed(4)} ·{" "}
-                {job.cost.totalTokens.toLocaleString()} tokens
-              </span>
-            ) : null}
-            {job.lastError ? (
-              <span className="text-red-500 dark:text-red-400" title={job.lastError}>
-                Error: {job.lastError.slice(0, 80)}{job.lastError.length > 80 ? "…" : ""}
-              </span>
-            ) : null}
+            ) : (
+              <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                {job.status === "completed" || job.status === "failed"
+                  ? "Not generated"
+                  : "Pending…"}
+              </p>
+            )}
           </div>
 
           {/* Log toggle */}
@@ -119,6 +129,27 @@ function ThreadTurn({ job, initialLogs, isLatest }: TurnProps) {
             ) : null}
           </div>
         </div>
+
+        {/* Cost card — full detail, shown once available */}
+        {job.cost ? (
+          <div className="mt-3">
+            <JobCostCard cost={job.cost} />
+          </div>
+        ) : job.status === "completed" || job.status === "failed" ? (
+          <Card className="mt-3 animate-pulse space-y-4 p-6">
+            <div className="h-3 w-1/2 rounded bg-gray-200 dark:bg-gray-700" />
+            <div className="h-7 w-1/3 rounded bg-gray-200 dark:bg-gray-700" />
+            <Separator />
+            <div className="grid grid-cols-2 gap-3">
+              {[...Array(4)].map((_, i) => (
+                <div key={i} className="space-y-1">
+                  <div className="h-2.5 w-2/3 rounded bg-gray-200 dark:bg-gray-700" />
+                  <div className="h-4 w-1/2 rounded bg-gray-200 dark:bg-gray-700" />
+                </div>
+              ))}
+            </div>
+          </Card>
+        ) : null}
       </div>
     </div>
   );
