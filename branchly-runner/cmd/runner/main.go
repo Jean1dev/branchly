@@ -14,7 +14,9 @@ import (
 	agentpkg "github.com/branchly/branchly-runner/internal/agent"
 	"github.com/branchly/branchly-runner/internal/agent/claudecode"
 	"github.com/branchly/branchly-runner/internal/agent/gemini"
+	"github.com/branchly/branchly-runner/internal/agent/mock"
 	"github.com/branchly/branchly-runner/internal/config"
+	"github.com/branchly/branchly-runner/internal/domain"
 	"github.com/branchly/branchly-runner/internal/executor"
 	"github.com/branchly/branchly-runner/internal/gitprovider"
 	"github.com/branchly/branchly-runner/internal/handler"
@@ -34,11 +36,15 @@ func main() {
 		os.Exit(1)
 	}
 
-	if strings.TrimSpace(os.Getenv("ANTHROPIC_API_KEY")) == "" {
-		slog.Warn("ANTHROPIC_API_KEY is empty; Claude Code jobs will fail until a valid key is provided")
-	}
-	if strings.TrimSpace(os.Getenv("GEMINI_API_KEY")) == "" {
-		slog.Warn("GEMINI_API_KEY is empty; Gemini jobs will fail until a valid key is provided")
+	if cfg.Environment == "dev" {
+		slog.Warn("running in dev mode — all agents are mocked; no real tokens will be used")
+	} else {
+		if strings.TrimSpace(os.Getenv("ANTHROPIC_API_KEY")) == "" {
+			slog.Warn("ANTHROPIC_API_KEY is empty; Claude Code jobs will fail until a valid key is provided")
+		}
+		if strings.TrimSpace(os.Getenv("GEMINI_API_KEY")) == "" {
+			slog.Warn("GEMINI_API_KEY is empty; Gemini jobs will fail until a valid key is provided")
+		}
 	}
 
 	ctx := context.Background()
@@ -54,8 +60,14 @@ func main() {
 	repoRepo := repository.NewRepoRepository(db)
 	integrationRepo := repository.NewIntegrationRepository(db)
 
-	claudeAgent := claudecode.New()
-	geminiAgent := gemini.New()
+	var claudeAgent, geminiAgent domain.Agent
+	if cfg.Environment == "dev" {
+		claudeAgent = mock.New()
+		geminiAgent = mock.New()
+	} else {
+		claudeAgent = claudecode.New()
+		geminiAgent = gemini.New()
+	}
 	agentFactory := agentpkg.NewFactory(claudeAgent, geminiAgent)
 	providerFactory := gitprovider.NewFactory()
 
