@@ -21,11 +21,12 @@ type DispatchJobPayload struct {
 	IntegrationID  string `json:"integration_id"`
 	Provider       string `json:"provider"`
 	AgentType      string `json:"agent_type"`
+	KeyProvider    string `json:"key_provider,omitempty"` // API key provider required for this job
 	// Thread context — set when this job continues an existing thread.
-	ThreadID       string `json:"thread_id,omitempty"`
-	ParentJobID    string `json:"parent_job_id,omitempty"`
-	BranchName     string `json:"branch_name,omitempty"`   // reuse parent branch when set
-	ParentPRUrl    string `json:"parent_pr_url,omitempty"` // inherit existing PR when set
+	ThreadID    string `json:"thread_id,omitempty"`
+	ParentJobID string `json:"parent_job_id,omitempty"`
+	BranchName  string `json:"branch_name,omitempty"`   // reuse parent branch when set
+	ParentPRUrl string `json:"parent_pr_url,omitempty"` // inherit existing PR when set
 }
 
 type RunnerClient struct {

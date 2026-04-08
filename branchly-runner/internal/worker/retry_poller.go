@@ -83,6 +83,7 @@ func (p *RetryPoller) poll(ctx context.Context) {
 			IntegrationID:  repo.IntegrationID,
 			Provider:       repo.Provider,
 			AgentType:      job.AgentType,
+			KeyProvider:    job.KeyProvider,
 			AttemptNumber:  job.AttemptNumber,
 			MaxAttempts:    job.MaxAttempts,
 		}

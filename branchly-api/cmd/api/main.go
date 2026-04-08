@@ -58,12 +58,14 @@ func main() {
 	integrationRepo := repository.NewIntegrationRepository(db)
 	jobRepo := repository.NewJobRepository(db)
 	jobLogRepo := repository.NewJobLogRepository(db)
+	apiKeyRepo := repository.NewAPIKeyRepository(db)
 
 	integSvc := service.NewIntegrationService(cfg, integrationRepo, repoRepo, nil)
 	authSvc := service.NewAuthService(cfg, userRepo, integSvc)
 	repoSvc := service.NewRepositoryService(cfg, integrationRepo, repoRepo, integSvc)
 	runner := infra.NewRunnerClient(cfg.RunnerURL, cfg.RunnerSecret)
 	jobSvc := service.NewJobService(cfg, jobRepo, jobLogRepo, repoRepo, runner)
+	apiKeySvc := service.NewAPIKeyService(apiKeyRepo, cfg.EncryptionKey)
 
 	repoH := handler.NewRepositoryHandler(repoSvc)
 	integH := handler.NewIntegrationHandler(integSvc, repoSvc)
@@ -71,6 +73,7 @@ func main() {
 	sseH := handler.NewSSEHandler(jobSvc)
 	internalH := handler.NewInternalHandler(jobSvc)
 	internalAuthH := handler.NewInternalAuthHandler(authSvc)
+	apiKeyH := handler.NewAPIKeyHandler(apiKeySvc)
 
 	gin.SetMode(gin.ReleaseMode)
 	r := gin.New()
@@ -101,6 +104,10 @@ func main() {
 		protected.GET("/jobs/:id/thread", jobH.GetThread)
 		protected.POST("/jobs/:id/retry", jobH.Retry)
 		protected.GET("/jobs/:id/logs", sseH.StreamJobLogs)
+
+		protected.GET("/settings/api-keys", apiKeyH.List)
+		protected.PUT("/settings/api-keys/:provider", apiKeyH.Save)
+		protected.DELETE("/settings/api-keys/:provider", apiKeyH.Delete)
 	}
 
 	internal := r.Group("/internal")

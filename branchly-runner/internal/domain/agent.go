@@ -11,5 +11,6 @@ type AgentInput struct {
 	Prompt     string
 	RepoName   string
 	BranchName string
+	APIKey     string // resolved at runtime; never logged or persisted
 	OnLog      func(level LogLevel, message string)
 }

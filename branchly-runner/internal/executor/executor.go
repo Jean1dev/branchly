@@ -46,12 +46,18 @@ type RunJobInput struct {
 	IntegrationID  string
 	Provider       domain.GitProvider
 	AgentType      domain.AgentType
+	KeyProvider    domain.APIKeyProvider
 	AttemptNumber  int
 	MaxAttempts    int
 	// Thread continuation fields — non-empty for follow-up jobs.
 	ParentJobID  string // signals this is a continuation job
 	ParentBranch string // existing branch to clone and push to
 	ParentPRUrl  string // existing PR URL to inherit (skip opening a new one)
+}
+
+// keyResolver resolves which API key to use for a given user and provider.
+type keyResolver interface {
+	Resolve(ctx context.Context, userID string, provider domain.APIKeyProvider) (string, error)
 }
 
 type Executor struct {
@@ -61,6 +67,7 @@ type Executor struct {
 	jobLogs         jobLogger
 	repos           domain.RepositoryRepository
 	integrations    domain.IntegrationRepository
+	keyResolver     keyResolver
 	encKey          []byte
 	workDir         string
 	appendMu        sync.Mutex
@@ -73,6 +80,7 @@ func NewExecutor(
 	jobLogs jobLogger,
 	repos domain.RepositoryRepository,
 	integrations domain.IntegrationRepository,
+	keyResolver keyResolver,
 	encKey []byte,
 	workDir string,
 ) *Executor {
@@ -83,6 +91,7 @@ func NewExecutor(
 		jobLogs:         jobLogs,
 		repos:           repos,
 		integrations:    integrations,
+		keyResolver:     keyResolver,
 		encKey:          encKey,
 		workDir:         workDir,
 	}
@@ -268,6 +277,23 @@ func (e *Executor) Run(ctx context.Context, in RunJobInput) {
 		return
 	}
 
+	// Step 4b: resolve the API key for this job — fail fast if none is available.
+	// KeyProvider may be empty for legacy jobs dispatched before BYOK; in that case
+	// we derive it from AgentType so old jobs continue to work.
+	keyProvider := in.KeyProvider
+	if keyProvider == "" {
+		keyProvider = domain.RequiredKeyProvider(in.AgentType)
+	}
+	kctx, kcancel := persistCtx()
+	apiKey, keyErr := e.keyResolver.Resolve(kctx, in.UserID, keyProvider)
+	kcancel()
+	if keyErr != nil {
+		slog.Error("key resolution failed", "job_id", in.JobID, "provider", keyProvider, "error", keyErr)
+		e.markFailedWithClassification(ctx, in, branchName, keyErr)
+		return
+	}
+	zeroAPIKey := func() { apiKey = "" }
+
 	// Step 5: fetch the integration and validate ownership.
 	ictx, icancel := persistCtx()
 	integration, integErr := e.integrations.FindByID(ictx, in.IntegrationID)
@@ -400,10 +426,12 @@ func (e *Executor) Run(ctx context.Context, in RunJobInput) {
 		Prompt:     in.Prompt,
 		RepoName:   in.RepositoryName,
 		BranchName: branchName,
+		APIKey:     apiKey,
 		OnLog: func(level domain.LogLevel, message string) {
 			e.appendLog(in.JobID, level, message)
 		},
 	})
+	zeroAPIKey() // clear from memory immediately after cmd has started
 	if err != nil {
 		zeroToken()
 		slog.Warn("agent failed", "job_id", in.JobID, "error", err)

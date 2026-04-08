@@ -7,7 +7,6 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
-	"strings"
 	"syscall"
 	"time"
 
@@ -39,11 +38,11 @@ func main() {
 	if cfg.Environment == "dev" {
 		slog.Warn("running in dev mode — all agents are mocked; no real tokens will be used")
 	} else {
-		if strings.TrimSpace(os.Getenv("ANTHROPIC_API_KEY")) == "" {
-			slog.Warn("ANTHROPIC_API_KEY is empty; Claude Code jobs will fail until a valid key is provided")
+		if cfg.AnthropicAPIKey == "" {
+			slog.Info("ANTHROPIC_API_KEY not set — Claude Code jobs will use each user's own API key (BYOK)")
 		}
-		if strings.TrimSpace(os.Getenv("GEMINI_API_KEY")) == "" {
-			slog.Warn("GEMINI_API_KEY is empty; Gemini jobs will fail until a valid key is provided")
+		if cfg.GeminiAPIKey == "" {
+			slog.Info("GEMINI_API_KEY not set — Gemini jobs will use each user's own API key (BYOK)")
 		}
 	}
 
@@ -59,6 +58,12 @@ func main() {
 	jobLogRepo := repository.NewJobLogRepository(db)
 	repoRepo := repository.NewRepoRepository(db)
 	integrationRepo := repository.NewIntegrationRepository(db)
+	apiKeyRepo := repository.NewAPIKeyRepository(db)
+
+	keyResolver := infra.NewKeyResolver(apiKeyRepo, cfg.EncryptionKey, map[domain.APIKeyProvider]string{
+		domain.APIKeyProviderAnthropic: cfg.AnthropicAPIKey,
+		domain.APIKeyProviderGoogle:    cfg.GeminiAPIKey,
+	})
 
 	var claudeAgent, geminiAgent domain.Agent
 	if cfg.Environment == "dev" {
@@ -78,6 +83,7 @@ func main() {
 		jobLogRepo,
 		repoRepo,
 		integrationRepo,
+		keyResolver,
 		cfg.EncryptionKey,
 		cfg.WorkDir,
 	)
