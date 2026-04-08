@@ -34,6 +34,10 @@ type postJobBody struct {
 	IntegrationID  string `json:"integration_id" binding:"required"`
 	Provider       string `json:"provider" binding:"required"`
 	AgentType      string `json:"agent_type"`
+	// Thread continuation fields — empty for root jobs.
+	ParentJobID string `json:"parent_job_id"`
+	BranchName  string `json:"branch_name"`   // parent's branch; clone this instead of default
+	ParentPRUrl string `json:"parent_pr_url"` // inherit existing PR when set
 }
 
 const maxRunnerSecretBytes = 512
@@ -73,6 +77,9 @@ func (h *JobsHandler) PostJob(c *gin.Context) {
 		IntegrationID:  strings.TrimSpace(body.IntegrationID),
 		Provider:       domain.GitProvider(strings.TrimSpace(body.Provider)),
 		AgentType:      domain.AgentType(strings.TrimSpace(body.AgentType)),
+		ParentJobID:    strings.TrimSpace(body.ParentJobID),
+		ParentBranch:   strings.TrimSpace(body.BranchName),
+		ParentPRUrl:    strings.TrimSpace(body.ParentPRUrl),
 	}
 	ok := h.pool.TryGo(func() {
 		h.executor.Run(context.Background(), in)
