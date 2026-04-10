@@ -67,6 +67,16 @@ func (s *stubAgent) Run(_ context.Context, _ domain.AgentInput) (string, error) 
 	return "", errors.New("stub agent should not be called")
 }
 
+// mockKeyResolver is a test double for keyResolver.
+type mockKeyResolver struct {
+	key string
+	err error
+}
+
+func (m *mockKeyResolver) Resolve(_ context.Context, _ string, _ domain.APIKeyProvider) (string, error) {
+	return m.key, m.err
+}
+
 // ---- test helpers ----
 
 func newTestExecutor(repoMock *mockRepoRepo, integMock *mockIntegrationRepo) (*Executor, *mockJobRepo, *mockJobLogRepo) {
@@ -81,6 +91,7 @@ func newTestExecutor(repoMock *mockRepoRepo, integMock *mockIntegrationRepo) (*E
 		jobLogs:         logs,
 		repos:           repoMock,
 		integrations:    integMock,
+		keyResolver:     &mockKeyResolver{key: "test-api-key"},
 		encKey:          make([]byte, 32), // zero key — decrypt will fail, but we test before that
 		workDir:         "/tmp",
 	}

@@ -106,6 +106,19 @@ func EnsureIndexes(ctx context.Context, db *mongo.Database) error {
 		return fmt.Errorf("infra/mongo: job_logs index: %w", err)
 	}
 
+	// user_api_keys: unique on (user_id, provider)
+	apiKeys := db.Collection("user_api_keys")
+	_, err = apiKeys.Indexes().CreateOne(ctx, mongo.IndexModel{
+		Keys: bson.D{
+			{Key: "user_id", Value: 1},
+			{Key: "provider", Value: 1},
+		},
+		Options: options.Index().SetUnique(true).SetName("uniq_api_keys_user_provider"),
+	})
+	if err != nil {
+		return fmt.Errorf("infra/mongo: user_api_keys index: %w", err)
+	}
+
 	slog.Info("mongo indexes ensured")
 	return nil
 }

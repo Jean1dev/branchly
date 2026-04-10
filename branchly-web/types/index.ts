@@ -1,3 +1,11 @@
+export type APIKeyProvider = "anthropic" | "google" | "openai";
+
+export interface APIKeyInfo {
+  provider: APIKeyProvider;
+  key_hint: string;
+  updated_at: string;
+}
+
 export type JobStatus = "pending" | "running" | "completed" | "failed" | "retrying";
 
 export type FailureType = "transient" | "permanent" | "";

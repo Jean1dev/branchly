@@ -22,6 +22,9 @@ type Config struct {
 	WorkDir           string
 	ShutdownTimeout   time.Duration
 	Environment       string
+	// Global fallback API keys — used when the user has not configured their own.
+	AnthropicAPIKey string
+	GeminiAPIKey    string
 }
 
 func Load() (*Config, error) {
@@ -85,5 +88,7 @@ func Load() (*Config, error) {
 		WorkDir:           workDir,
 		ShutdownTimeout:   shutdownTimeout,
 		Environment:       environment,
+		AnthropicAPIKey:   strings.TrimSpace(os.Getenv("ANTHROPIC_API_KEY")),
+		GeminiAPIKey:      strings.TrimSpace(os.Getenv("GEMINI_API_KEY")),
 	}, nil
 }

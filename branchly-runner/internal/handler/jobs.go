@@ -34,6 +34,7 @@ type postJobBody struct {
 	IntegrationID  string `json:"integration_id" binding:"required"`
 	Provider       string `json:"provider" binding:"required"`
 	AgentType      string `json:"agent_type"`
+	KeyProvider    string `json:"key_provider"` // API key provider for BYOK resolution
 	// Thread continuation fields — empty for root jobs.
 	ParentJobID string `json:"parent_job_id"`
 	BranchName  string `json:"branch_name"`   // parent's branch; clone this instead of default
@@ -77,6 +78,7 @@ func (h *JobsHandler) PostJob(c *gin.Context) {
 		IntegrationID:  strings.TrimSpace(body.IntegrationID),
 		Provider:       domain.GitProvider(strings.TrimSpace(body.Provider)),
 		AgentType:      domain.AgentType(strings.TrimSpace(body.AgentType)),
+		KeyProvider:    domain.APIKeyProvider(strings.TrimSpace(body.KeyProvider)),
 		ParentJobID:    strings.TrimSpace(body.ParentJobID),
 		ParentBranch:   strings.TrimSpace(body.BranchName),
 		ParentPRUrl:    strings.TrimSpace(body.ParentPRUrl),

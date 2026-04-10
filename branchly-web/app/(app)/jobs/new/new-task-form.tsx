@@ -5,10 +5,16 @@ import { PageHeader } from "@/components/layout/page-header";
 import { type ApiRepository, unwrapApiData } from "@/lib/map-api";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import { AGENTS, type AgentType } from "@/types";
+import { AGENTS, type AgentType, type APIKeyInfo, type APIKeyProvider } from "@/types";
 import { ChevronDown } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
+
+// Maps agent type → API key provider
+const AGENT_KEY_PROVIDER: Record<AgentType, APIKeyProvider> = {
+  "claude-code": "anthropic",
+  "gemini": "google",
+};
 
 type RepoRow = Pick<ApiRepository, "id" | "full_name" | "language">;
 
@@ -23,6 +29,7 @@ export function NewTaskForm() {
   const [prompt, setPrompt] = useState("");
   const [selectedAgent, setSelectedAgent] = useState<AgentType>("claude-code");
   const [submitting, setSubmitting] = useState(false);
+  const [apiKeys, setApiKeys] = useState<APIKeyInfo[]>([]);
 
   useEffect(() => {
     void fetch("/api/repositories")
@@ -32,6 +39,16 @@ export function NewTaskForm() {
       })
       .then((data) => setRepos(Array.isArray(data) ? data : []))
       .catch(() => setRepos([]));
+  }, []);
+
+  useEffect(() => {
+    void fetch("/api/settings/api-keys")
+      .then(async (r) => {
+        if (!r.ok) return [] as APIKeyInfo[];
+        return unwrapApiData<APIKeyInfo[]>(await r.json());
+      })
+      .then((data) => setApiKeys(Array.isArray(data) ? data : []))
+      .catch(() => setApiKeys([]));
   }, []);
 
   useEffect(() => {
@@ -132,6 +149,30 @@ export function NewTaskForm() {
             })}
           </div>
         </div>
+
+        {/* Key indicator */}
+        {(() => {
+          const keyProvider = AGENT_KEY_PROVIDER[selectedAgent];
+          const configuredKey = apiKeys.find((k) => k.provider === keyProvider);
+          if (configuredKey) {
+            return (
+              <p className="text-xs text-green-700 dark:text-green-400">
+                Using your {keyProvider === "anthropic" ? "Anthropic" : "Google AI"} key (····{configuredKey.key_hint})
+              </p>
+            );
+          }
+          return (
+            <p className="text-xs text-gray-500 dark:text-gray-400">
+              Using Branchly shared key ·{" "}
+              <a
+                href="/settings/api-keys"
+                className="underline hover:text-gray-700 dark:hover:text-gray-200"
+              >
+                Add your own →
+              </a>
+            </p>
+          );
+        })()}
 
         {/* Repository selection */}
         <div className="space-y-2">

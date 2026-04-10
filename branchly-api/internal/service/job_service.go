@@ -63,6 +63,7 @@ func (s *JobService) Create(ctx context.Context, userID string, in CreateJobInpu
 		RepositoryID: repo.ID,
 		Prompt:       in.Prompt,
 		AgentType:    in.AgentType,
+		KeyProvider:  domain.RequiredKeyProvider(in.AgentType),
 		Status:       domain.JobStatusPending,
 		CreatedAt:    now,
 		UpdatedAt:    now,
@@ -112,6 +113,7 @@ func (s *JobService) Create(ctx context.Context, userID string, in CreateJobInpu
 		IntegrationID:  repo.IntegrationID,
 		Provider:       string(repo.Provider),
 		AgentType:      string(job.AgentType),
+		KeyProvider:    string(job.KeyProvider),
 		ThreadID:       job.ThreadID,
 		ParentJobID:    job.ParentJobID,
 		BranchName:     parentBranchName,
@@ -240,6 +242,7 @@ func (s *JobService) Retry(ctx context.Context, userID string, jobID string) (*d
 		IntegrationID:  repo.IntegrationID,
 		Provider:       string(repo.Provider),
 		AgentType:      string(job.AgentType),
+		KeyProvider:    string(job.KeyProvider),
 	})
 	if err != nil {
 		_ = s.jobs.UpdateJobFields(ctx, job.ID, domain.JobStatusFailed, "", "", ptrTime(time.Now().UTC()))
