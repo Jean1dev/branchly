@@ -25,6 +25,8 @@ func RequiredKeyProvider(agent AgentType) APIKeyProvider {
 		return APIKeyProviderAnthropic
 	case AgentTypeGemini:
 		return APIKeyProviderGoogle
+	case AgentTypeGPTCodex:
+		return APIKeyProviderOpenAI
 	default:
 		return ""
 	}

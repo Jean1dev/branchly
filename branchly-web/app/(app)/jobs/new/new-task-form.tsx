@@ -14,6 +14,13 @@ import { useEffect, useMemo, useRef, useState } from "react";
 const AGENT_KEY_PROVIDER: Record<AgentType, APIKeyProvider> = {
   "claude-code": "anthropic",
   "gemini": "google",
+  "gpt-codex": "openai",
+};
+
+const PROVIDER_LABEL: Record<APIKeyProvider, string> = {
+  anthropic: "Anthropic",
+  google: "Google AI",
+  openai: "OpenAI",
 };
 
 type RepoRow = Pick<ApiRepository, "id" | "full_name" | "language">;
@@ -157,7 +164,7 @@ export function NewTaskForm() {
           if (configuredKey) {
             return (
               <p className="text-xs text-green-700 dark:text-green-400">
-                Using your {keyProvider === "anthropic" ? "Anthropic" : "Google AI"} key (····{configuredKey.key_hint})
+                Using your {PROVIDER_LABEL[keyProvider]} key (····{configuredKey.key_hint})
               </p>
             );
           }

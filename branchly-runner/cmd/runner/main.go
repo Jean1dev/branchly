@@ -12,6 +12,7 @@ import (
 
 	agentpkg "github.com/branchly/branchly-runner/internal/agent"
 	"github.com/branchly/branchly-runner/internal/agent/claudecode"
+	"github.com/branchly/branchly-runner/internal/agent/codex"
 	"github.com/branchly/branchly-runner/internal/agent/gemini"
 	"github.com/branchly/branchly-runner/internal/agent/mock"
 	"github.com/branchly/branchly-runner/internal/config"
@@ -44,6 +45,9 @@ func main() {
 		if cfg.GeminiAPIKey == "" {
 			slog.Info("GEMINI_API_KEY not set — Gemini jobs will use each user's own API key (BYOK)")
 		}
+		if cfg.OpenAIAPIKey == "" {
+			slog.Info("OPENAI_API_KEY not set — GPT Codex jobs will use each user's own API key (BYOK)")
+		}
 	}
 
 	ctx := context.Background()
@@ -63,17 +67,20 @@ func main() {
 	keyResolver := infra.NewKeyResolver(apiKeyRepo, cfg.EncryptionKey, map[domain.APIKeyProvider]string{
 		domain.APIKeyProviderAnthropic: cfg.AnthropicAPIKey,
 		domain.APIKeyProviderGoogle:    cfg.GeminiAPIKey,
+		domain.APIKeyProviderOpenAI:    cfg.OpenAIAPIKey,
 	})
 
-	var claudeAgent, geminiAgent domain.Agent
+	var claudeAgent, geminiAgent, codexAgent domain.Agent
 	if cfg.Environment == "dev" {
 		claudeAgent = mock.New()
 		geminiAgent = mock.New()
+		codexAgent = mock.New()
 	} else {
 		claudeAgent = claudecode.New()
 		geminiAgent = gemini.New()
+		codexAgent = codex.New()
 	}
-	agentFactory := agentpkg.NewFactory(claudeAgent, geminiAgent)
+	agentFactory := agentpkg.NewFactory(claudeAgent, geminiAgent, codexAgent)
 	providerFactory := gitprovider.NewFactory()
 
 	ex := executor.NewExecutor(

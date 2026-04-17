@@ -11,11 +11,12 @@ type AgentType string
 const (
 	AgentTypeClaudeCode AgentType = "claude-code"
 	AgentTypeGemini     AgentType = "gemini"
+	AgentTypeGPTCodex   AgentType = "gpt-codex"
 )
 
 func (a AgentType) IsValid() bool {
 	switch a {
-	case AgentTypeClaudeCode, AgentTypeGemini:
+	case AgentTypeClaudeCode, AgentTypeGemini, AgentTypeGPTCodex:
 		return true
 	}
 	return false

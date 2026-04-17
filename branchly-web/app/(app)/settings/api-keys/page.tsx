@@ -41,6 +41,16 @@ const PROVIDERS: ProviderConfig[] = [
     docsLabel: "Get your key at aistudio.google.com",
     icon: "G",
   },
+  {
+    id: "openai",
+    label: "OpenAI",
+    usedBy: "GPT Codex",
+    prefix: "sk-",
+    placeholder: "sk-…",
+    docsURL: "https://platform.openai.com/api-keys",
+    docsLabel: "Get your key at platform.openai.com",
+    icon: "O",
+  },
 ];
 
 export default function APIKeysPage() {

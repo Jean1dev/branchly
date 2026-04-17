@@ -25,6 +25,7 @@ type Config struct {
 	// Global fallback API keys — used when the user has not configured their own.
 	AnthropicAPIKey string
 	GeminiAPIKey    string
+	OpenAIAPIKey    string
 }
 
 func Load() (*Config, error) {
@@ -90,5 +91,6 @@ func Load() (*Config, error) {
 		Environment:       environment,
 		AnthropicAPIKey:   strings.TrimSpace(os.Getenv("ANTHROPIC_API_KEY")),
 		GeminiAPIKey:      strings.TrimSpace(os.Getenv("GEMINI_API_KEY")),
+		OpenAIAPIKey:      strings.TrimSpace(os.Getenv("OPENAI_API_KEY")),
 	}, nil
 }
