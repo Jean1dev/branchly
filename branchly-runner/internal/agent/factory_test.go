@@ -16,7 +16,8 @@ func (s *stubAgent) Run(_ context.Context, _ domain.AgentInput) (string, error) 
 func TestFactory_ClaudeCode_ReturnsClaudeCodeAgent(t *testing.T) {
 	claude := &stubAgent{name: "claude"}
 	gemini := &stubAgent{name: "gemini"}
-	f := agentpkg.NewFactory(claude, gemini)
+	codex := &stubAgent{name: "codex"}
+	f := agentpkg.NewFactory(claude, gemini, codex)
 
 	got, err := f.Create(domain.AgentTypeClaudeCode)
 	if err != nil {
@@ -30,7 +31,8 @@ func TestFactory_ClaudeCode_ReturnsClaudeCodeAgent(t *testing.T) {
 func TestFactory_Gemini_ReturnsGeminiAgent(t *testing.T) {
 	claude := &stubAgent{name: "claude"}
 	gemini := &stubAgent{name: "gemini"}
-	f := agentpkg.NewFactory(claude, gemini)
+	codex := &stubAgent{name: "codex"}
+	f := agentpkg.NewFactory(claude, gemini, codex)
 
 	got, err := f.Create(domain.AgentTypeGemini)
 	if err != nil {
@@ -41,8 +43,23 @@ func TestFactory_Gemini_ReturnsGeminiAgent(t *testing.T) {
 	}
 }
 
+func TestFactory_GPTCodex_ReturnsCodexAgent(t *testing.T) {
+	claude := &stubAgent{name: "claude"}
+	gemini := &stubAgent{name: "gemini"}
+	codex := &stubAgent{name: "codex"}
+	f := agentpkg.NewFactory(claude, gemini, codex)
+
+	got, err := f.Create(domain.AgentTypeGPTCodex)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got != codex {
+		t.Error("expected codex agent to be returned for AgentTypeGPTCodex")
+	}
+}
+
 func TestFactory_UnknownType_ReturnsError(t *testing.T) {
-	f := agentpkg.NewFactory(&stubAgent{}, &stubAgent{})
+	f := agentpkg.NewFactory(&stubAgent{}, &stubAgent{}, &stubAgent{})
 
 	_, err := f.Create("openai")
 	if err == nil {
@@ -53,7 +70,8 @@ func TestFactory_UnknownType_ReturnsError(t *testing.T) {
 func TestFactory_Agents_AreSingletons(t *testing.T) {
 	claude := &stubAgent{name: "claude"}
 	gemini := &stubAgent{name: "gemini"}
-	f := agentpkg.NewFactory(claude, gemini)
+	codex := &stubAgent{name: "codex"}
+	f := agentpkg.NewFactory(claude, gemini, codex)
 
 	a1, _ := f.Create(domain.AgentTypeClaudeCode)
 	a2, _ := f.Create(domain.AgentTypeClaudeCode)

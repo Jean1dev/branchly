@@ -82,7 +82,7 @@ func (m *mockKeyResolver) Resolve(_ context.Context, _ string, _ domain.APIKeyPr
 func newTestExecutor(repoMock *mockRepoRepo, integMock *mockIntegrationRepo) (*Executor, *mockJobRepo, *mockJobLogRepo) {
 	jobs := &mockJobRepo{}
 	logs := &mockJobLogRepo{}
-	factory := agentpkg.NewFactory(&stubAgent{}, &stubAgent{})
+	factory := agentpkg.NewFactory(&stubAgent{}, &stubAgent{}, &stubAgent{})
 	provFactory := gitprovider.NewFactory()
 	ex := &Executor{
 		factory:         factory,
