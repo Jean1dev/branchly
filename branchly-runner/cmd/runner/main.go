@@ -20,6 +20,7 @@ import (
 	"github.com/branchly/branchly-runner/internal/gitprovider"
 	"github.com/branchly/branchly-runner/internal/handler"
 	"github.com/branchly/branchly-runner/internal/infra"
+	"github.com/branchly/branchly-runner/internal/notifier"
 	"github.com/branchly/branchly-runner/internal/pool"
 	"github.com/branchly/branchly-runner/internal/repository"
 	"github.com/branchly/branchly-runner/internal/worker"
@@ -59,6 +60,7 @@ func main() {
 	repoRepo := repository.NewRepoRepository(db)
 	integrationRepo := repository.NewIntegrationRepository(db)
 	apiKeyRepo := repository.NewAPIKeyRepository(db)
+	userRepo := repository.NewUserRepository(db)
 
 	keyResolver := infra.NewKeyResolver(apiKeyRepo, cfg.EncryptionKey, map[domain.APIKeyProvider]string{
 		domain.APIKeyProviderAnthropic: cfg.AnthropicAPIKey,
@@ -76,6 +78,8 @@ func main() {
 	agentFactory := agentpkg.NewFactory(claudeAgent, geminiAgent)
 	providerFactory := gitprovider.NewFactory()
 
+	jobNotifier := notifier.New(userRepo)
+
 	ex := executor.NewExecutor(
 		agentFactory,
 		providerFactory,
@@ -84,6 +88,7 @@ func main() {
 		repoRepo,
 		integrationRepo,
 		keyResolver,
+		jobNotifier,
 		cfg.EncryptionKey,
 		cfg.WorkDir,
 	)

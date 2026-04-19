@@ -35,13 +35,15 @@ func (r *mongoUserRepository) UpsertByProvider(ctx context.Context, u *domain.Us
 		"avatar_url": u.AvatarURL,
 		"updated_at": now,
 	}
+	defaults := domain.DefaultNotificationPreferences()
 	update := bson.M{
 		"$set": set,
 		"$setOnInsert": bson.M{
-			"_id":         uuid.New().String(),
-			"provider":    u.Provider,
-			"provider_id": u.ProviderID,
-			"created_at":  now,
+			"_id":                      uuid.New().String(),
+			"provider":                 u.Provider,
+			"provider_id":              u.ProviderID,
+			"created_at":               now,
+			"notification_preferences": defaults,
 		},
 	}
 	opts := options.FindOneAndUpdate().SetUpsert(true).SetReturnDocument(options.After)
@@ -51,6 +53,22 @@ func (r *mongoUserRepository) UpsertByProvider(ctx context.Context, u *domain.Us
 		return nil, fmt.Errorf("user repository: upsert: %w", err)
 	}
 	return &out, nil
+}
+
+func (r *mongoUserRepository) UpdateNotificationPreferences(ctx context.Context, id string, prefs domain.NotificationPreferences) error {
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	_, err := r.coll.UpdateOne(ctx,
+		bson.M{"_id": id},
+		bson.M{"$set": bson.M{
+			"notification_preferences": prefs,
+			"updated_at":               time.Now().UTC(),
+		}},
+	)
+	if err != nil {
+		return fmt.Errorf("user repository: update notification preferences: %w", err)
+	}
+	return nil
 }
 
 func (r *mongoUserRepository) FindByID(ctx context.Context, id string) (*domain.User, error) {
