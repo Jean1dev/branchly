@@ -105,3 +105,51 @@ func TestKeyResolver_RepoLookupErrorPropagates(t *testing.T) {
 		t.Fatal("expected error when repo lookup fails, got nil")
 	}
 }
+
+// OpenAI / GPT Codex BYOK tests — covers test plan item:
+// "Without OPENAI_API_KEY, configure an OpenAI key in Settings → verify BYOK path resolves correctly"
+
+func TestKeyResolver_OpenAI_UserKeyTakesPriority(t *testing.T) {
+	userKey := &domain.UserAPIKey{
+		UserID:       "user1",
+		Provider:     domain.APIKeyProviderOpenAI,
+		EncryptedKey: encryptedKey(t, "sk-user-openai-secret"),
+	}
+	repo := &stubAPIKeyRepo{key: userKey}
+	resolver := infra.NewKeyResolver(repo, testEncKey, map[domain.APIKeyProvider]string{
+		domain.APIKeyProviderOpenAI: "sk-global-openai-fallback",
+	})
+
+	got, err := resolver.Resolve(context.Background(), "user1", domain.APIKeyProviderOpenAI)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got != "sk-user-openai-secret" {
+		t.Errorf("expected user OpenAI key, got %q", got)
+	}
+}
+
+func TestKeyResolver_OpenAI_FallsBackToGlobalKey(t *testing.T) {
+	repo := &stubAPIKeyRepo{key: nil} // no user key stored
+	resolver := infra.NewKeyResolver(repo, testEncKey, map[domain.APIKeyProvider]string{
+		domain.APIKeyProviderOpenAI: "sk-global-openai-key",
+	})
+
+	got, err := resolver.Resolve(context.Background(), "user1", domain.APIKeyProviderOpenAI)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got != "sk-global-openai-key" {
+		t.Errorf("expected global OpenAI key, got %q", got)
+	}
+}
+
+func TestKeyResolver_OpenAI_ErrorWhenNoKeyAvailable(t *testing.T) {
+	repo := &stubAPIKeyRepo{key: nil}
+	resolver := infra.NewKeyResolver(repo, testEncKey, map[domain.APIKeyProvider]string{}) // no globals
+
+	_, err := resolver.Resolve(context.Background(), "user1", domain.APIKeyProviderOpenAI)
+	if err == nil {
+		t.Fatal("expected error when no OpenAI key available, got nil")
+	}
+}
