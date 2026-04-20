@@ -24,11 +24,12 @@ type JobNotifData struct {
 }
 
 type Notifier struct {
-	users domain.UserRepository
+	users  domain.UserRepository
+	sender func(event, to string, data JobNotifData)
 }
 
 func New(users domain.UserRepository) *Notifier {
-	return &Notifier{users: users}
+	return &Notifier{users: users, sender: logEmail}
 }
 
 func (n *Notifier) fetchUser(ctx context.Context, userID string) (*domain.User, bool) {
@@ -46,11 +47,10 @@ func (n *Notifier) fetchUser(ctx context.Context, userID string) (*domain.User, 
 	return user, true
 }
 
-func logEmail(event, to, subject string, data JobNotifData) {
+func logEmail(event, to string, data JobNotifData) {
 	slog.Info("[notifier:stub] would send email",
 		"event", event,
 		"to", to,
-		"subject", subject,
 		"repo", data.RepoFullName,
 		"branch", data.BranchName,
 		"agent", data.AgentName,
@@ -67,8 +67,7 @@ func (n *Notifier) NotifyJobCompleted(ctx context.Context, data JobNotifData) {
 	if !prefs.Enabled || !prefs.OnJobCompleted {
 		return
 	}
-	logEmail("job_completed", user.Email,
-		fmt.Sprintf("Job completed on %s", data.RepoFullName), data)
+	n.sender("job_completed", user.Email, data)
 }
 
 func (n *Notifier) NotifyJobFailed(ctx context.Context, data JobNotifData) {
@@ -80,8 +79,7 @@ func (n *Notifier) NotifyJobFailed(ctx context.Context, data JobNotifData) {
 	if !prefs.Enabled || !prefs.OnJobFailed {
 		return
 	}
-	logEmail("job_failed", user.Email,
-		fmt.Sprintf("Job failed on %s", data.RepoFullName), data)
+	n.sender("job_failed", user.Email, data)
 }
 
 func (n *Notifier) NotifyPROpened(ctx context.Context, data JobNotifData) {
@@ -93,6 +91,5 @@ func (n *Notifier) NotifyPROpened(ctx context.Context, data JobNotifData) {
 	if !prefs.Enabled || !prefs.OnPROpened {
 		return
 	}
-	logEmail("pr_opened", user.Email,
-		fmt.Sprintf("Pull request opened on %s", data.RepoFullName), data)
+	n.sender("pr_opened", user.Email, data)
 }
