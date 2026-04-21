@@ -1,8 +1,12 @@
 import { describe, it, expect } from 'vitest'
 import {
-  jobCompletedTemplate,
-  jobFailedTemplate,
-  prOpenedTemplate,
+  TEMPLATE_SLUGS,
+  JOB_COMPLETED_HTML_TEMPLATE,
+  JOB_FAILED_HTML_TEMPLATE,
+  PR_OPENED_HTML_TEMPLATE,
+  jobCompletedVars,
+  jobFailedVars,
+  prOpenedVars,
   type JobEmailData,
 } from './templates'
 
@@ -18,132 +22,151 @@ const baseData: JobEmailData = {
   finishedAt: new Date('2026-04-20T12:00:00Z'),
 }
 
-describe('jobCompletedTemplate', () => {
-  it('returns a string containing HTML doctype', () => {
-    const html = jobCompletedTemplate(baseData)
-    expect(html).toContain('<!DOCTYPE html>')
+// ---- Template slug constants ----
+
+describe('TEMPLATE_SLUGS', () => {
+  it('defines unique slugs for each event type', () => {
+    const slugs = Object.values(TEMPLATE_SLUGS)
+    expect(new Set(slugs).size).toBe(slugs.length)
   })
 
-  it('includes the repository name', () => {
-    const html = jobCompletedTemplate(baseData)
-    expect(html).toContain('owner/repo')
-  })
-
-  it('includes the branch name', () => {
-    const html = jobCompletedTemplate(baseData)
-    expect(html).toContain('branchly/add-feature')
-  })
-
-  it('includes the agent name', () => {
-    const html = jobCompletedTemplate(baseData)
-    expect(html).toContain('Claude Code')
-  })
-
-  it('includes the prompt text', () => {
-    const html = jobCompletedTemplate(baseData)
-    expect(html).toContain('Add a comprehensive test suite')
-  })
-
-  it('includes the job logs URL', () => {
-    const html = jobCompletedTemplate(baseData)
-    expect(html).toContain('https://app.branchly.com/jobs/job-123')
-  })
-
-  it('formats duration in seconds correctly', () => {
-    const html = jobCompletedTemplate({ ...baseData, durationSeconds: 45 })
-    expect(html).toContain('45s')
-  })
-
-  it('formats duration in minutes when >= 60s', () => {
-    const html = jobCompletedTemplate({ ...baseData, durationSeconds: 90 })
-    expect(html).toContain('1m 30s')
-  })
-
-  it('includes PR button when prUrl is provided', () => {
-    const html = jobCompletedTemplate({
-      ...baseData,
-      prUrl: 'https://github.com/owner/repo/pull/42',
-    })
-    expect(html).toContain('https://github.com/owner/repo/pull/42')
-    expect(html).toContain('View Pull Request')
-  })
-
-  it('omits PR button when prUrl is not provided', () => {
-    const html = jobCompletedTemplate({ ...baseData, prUrl: undefined })
-    expect(html).not.toContain('View Pull Request')
-  })
-
-  it('includes estimated cost when provided', () => {
-    const html = jobCompletedTemplate({
-      ...baseData,
-      estimatedCostUsd: 0.0042,
-    })
-    expect(html).toContain('$0.0042')
-  })
-
-  it('omits cost line when estimatedCostUsd is not provided', () => {
-    const html = jobCompletedTemplate({ ...baseData, estimatedCostUsd: undefined })
-    expect(html).not.toContain('Estimated cost')
+  it('all slugs start with "branchly-"', () => {
+    for (const slug of Object.values(TEMPLATE_SLUGS)) {
+      expect(slug).toMatch(/^branchly-/)
+    }
   })
 })
 
-describe('jobFailedTemplate', () => {
-  it('returns a string containing HTML doctype', () => {
-    const html = jobFailedTemplate(baseData)
-    expect(html).toContain('<!DOCTYPE html>')
+// ---- Go template HTML strings ----
+
+describe('JOB_COMPLETED_HTML_TEMPLATE', () => {
+  it('contains HTML doctype', () => {
+    expect(JOB_COMPLETED_HTML_TEMPLATE).toContain('<!DOCTYPE html>')
   })
 
-  it('includes "Job failed" heading', () => {
-    const html = jobFailedTemplate(baseData)
-    expect(html).toContain('Job failed')
+  it('contains Go template variable placeholders', () => {
+    expect(JOB_COMPLETED_HTML_TEMPLATE).toContain('{{.repo_full_name}}')
+    expect(JOB_COMPLETED_HTML_TEMPLATE).toContain('{{.branch_name}}')
+    expect(JOB_COMPLETED_HTML_TEMPLATE).toContain('{{.agent_name}}')
+    expect(JOB_COMPLETED_HTML_TEMPLATE).toContain('{{.prompt}}')
+    expect(JOB_COMPLETED_HTML_TEMPLATE).toContain('{{.duration}}')
+    expect(JOB_COMPLETED_HTML_TEMPLATE).toContain('{{.job_logs_url}}')
   })
 
-  it('includes the repository name', () => {
-    const html = jobFailedTemplate(baseData)
-    expect(html).toContain('owner/repo')
+  it('uses conditional block for PR URL', () => {
+    expect(JOB_COMPLETED_HTML_TEMPLATE).toContain('{{if .pr_url}}')
+    expect(JOB_COMPLETED_HTML_TEMPLATE).toContain('{{.pr_url}}')
   })
 
-  it('includes the error message when provided', () => {
-    const html = jobFailedTemplate({
-      ...baseData,
-      errorMessage: 'agent process exited with code 1',
-    })
-    expect(html).toContain('agent process exited with code 1')
-  })
-
-  it('omits error block when errorMessage is not provided', () => {
-    const html = jobFailedTemplate({ ...baseData, errorMessage: undefined })
-    expect(html).not.toContain('Error')
-  })
-
-  it('includes the job logs URL', () => {
-    const html = jobFailedTemplate(baseData)
-    expect(html).toContain(baseData.jobLogsUrl)
+  it('uses conditional block for estimated cost', () => {
+    expect(JOB_COMPLETED_HTML_TEMPLATE).toContain('{{if .estimated_cost}}')
+    expect(JOB_COMPLETED_HTML_TEMPLATE).toContain('{{.estimated_cost}}')
   })
 })
 
-describe('prOpenedTemplate', () => {
-  it('returns a string containing HTML doctype', () => {
-    const html = prOpenedTemplate(baseData)
-    expect(html).toContain('<!DOCTYPE html>')
+describe('JOB_FAILED_HTML_TEMPLATE', () => {
+  it('contains HTML doctype', () => {
+    expect(JOB_FAILED_HTML_TEMPLATE).toContain('<!DOCTYPE html>')
   })
 
-  it('includes "Pull request opened" heading', () => {
-    const html = prOpenedTemplate(baseData)
-    expect(html).toContain('Pull request opened')
+  it('contains Go template variable for error message', () => {
+    expect(JOB_FAILED_HTML_TEMPLATE).toContain('{{if .error_message}}')
+    expect(JOB_FAILED_HTML_TEMPLATE).toContain('{{.error_message}}')
   })
 
-  it('includes the PR URL when provided', () => {
-    const html = prOpenedTemplate({
-      ...baseData,
-      prUrl: 'https://github.com/owner/repo/pull/7',
-    })
-    expect(html).toContain('https://github.com/owner/repo/pull/7')
+  it('contains required variable placeholders', () => {
+    expect(JOB_FAILED_HTML_TEMPLATE).toContain('{{.repo_full_name}}')
+    expect(JOB_FAILED_HTML_TEMPLATE).toContain('{{.prompt}}')
+    expect(JOB_FAILED_HTML_TEMPLATE).toContain('{{.job_logs_url}}')
+  })
+})
+
+describe('PR_OPENED_HTML_TEMPLATE', () => {
+  it('contains HTML doctype', () => {
+    expect(PR_OPENED_HTML_TEMPLATE).toContain('<!DOCTYPE html>')
   })
 
-  it('includes the repository and branch names', () => {
-    const html = prOpenedTemplate(baseData)
-    expect(html).toContain('owner/repo')
-    expect(html).toContain('branchly/add-feature')
+  it('contains PR URL conditional block', () => {
+    expect(PR_OPENED_HTML_TEMPLATE).toContain('{{if .pr_url}}')
+  })
+
+  it('contains required variable placeholders', () => {
+    expect(PR_OPENED_HTML_TEMPLATE).toContain('{{.repo_full_name}}')
+    expect(PR_OPENED_HTML_TEMPLATE).toContain('{{.branch_name}}')
+  })
+})
+
+// ---- Variable extractors ----
+
+describe('jobCompletedVars', () => {
+  it('extracts all required keys', () => {
+    const vars = jobCompletedVars(baseData)
+    expect(vars.repo_full_name).toBe('owner/repo')
+    expect(vars.branch_name).toBe('branchly/add-feature')
+    expect(vars.agent_name).toBe('Claude Code')
+    expect(vars.prompt).toBe('Add a comprehensive test suite')
+    expect(vars.job_logs_url).toBe('https://app.branchly.com/jobs/job-123')
+  })
+
+  it('formats duration in seconds', () => {
+    const vars = jobCompletedVars({ ...baseData, durationSeconds: 45 })
+    expect(vars.duration).toBe('45s')
+  })
+
+  it('formats duration in minutes and seconds', () => {
+    const vars = jobCompletedVars({ ...baseData, durationSeconds: 90 })
+    expect(vars.duration).toBe('1m 30s')
+  })
+
+  it('formats whole minutes correctly', () => {
+    const vars = jobCompletedVars({ ...baseData, durationSeconds: 120 })
+    expect(vars.duration).toBe('2m')
+  })
+
+  it('includes formatted cost when estimatedCostUsd is provided', () => {
+    const vars = jobCompletedVars({ ...baseData, estimatedCostUsd: 0.0042 })
+    expect(vars.estimated_cost).toBe('$0.0042')
+  })
+
+  it('returns empty string for estimated_cost when not provided', () => {
+    const vars = jobCompletedVars({ ...baseData, estimatedCostUsd: undefined })
+    expect(vars.estimated_cost).toBe('')
+  })
+
+  it('returns empty string for pr_url when not provided', () => {
+    const vars = jobCompletedVars({ ...baseData, prUrl: undefined })
+    expect(vars.pr_url).toBe('')
+  })
+
+  it('includes pr_url when provided', () => {
+    const vars = jobCompletedVars({ ...baseData, prUrl: 'https://github.com/owner/repo/pull/1' })
+    expect(vars.pr_url).toBe('https://github.com/owner/repo/pull/1')
+  })
+})
+
+describe('jobFailedVars', () => {
+  it('includes error_message when provided', () => {
+    const vars = jobFailedVars({ ...baseData, errorMessage: 'agent timed out' })
+    expect(vars.error_message).toBe('agent timed out')
+  })
+
+  it('returns empty string for error_message when not provided', () => {
+    const vars = jobFailedVars({ ...baseData, errorMessage: undefined })
+    expect(vars.error_message).toBe('')
+  })
+
+  it('includes base variables', () => {
+    const vars = jobFailedVars(baseData)
+    expect(vars.repo_full_name).toBe('owner/repo')
+    expect(vars.agent_name).toBe('Claude Code')
+  })
+})
+
+describe('prOpenedVars', () => {
+  it('extracts all required keys', () => {
+    const vars = prOpenedVars({ ...baseData, prUrl: 'https://github.com/owner/repo/pull/7' })
+    expect(vars.pr_url).toBe('https://github.com/owner/repo/pull/7')
+    expect(vars.repo_full_name).toBe('owner/repo')
+    expect(vars.branch_name).toBe('branchly/add-feature')
   })
 })

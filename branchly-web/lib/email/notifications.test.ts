@@ -1,8 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import type { JobEmailData } from './templates'
-
-// We test the notification functions by mocking fetch (which they use to
-// get user prefs from branchly-api) and the email provider (via module mock).
+import { TEMPLATE_SLUGS, type JobEmailData } from './templates'
 
 const mockSend = vi.fn().mockResolvedValue(undefined)
 
@@ -10,7 +7,6 @@ vi.mock('./index', () => ({
   getEmailProvider: () => ({ send: mockSend }),
 }))
 
-// Import after mocks are in place.
 const { notifyJobCompleted, notifyJobFailed, notifyPROpened } = await import('./notifications')
 
 const baseEmailData: JobEmailData = {
@@ -51,6 +47,8 @@ function mockFetchNotOk() {
   global.fetch = vi.fn().mockResolvedValue({ ok: false })
 }
 
+const allEnabled = { enabled: true, on_job_completed: true, on_job_failed: true, on_pr_opened: true }
+
 beforeEach(() => {
   mockSend.mockClear()
   process.env.API_URL = 'http://api:8080'
@@ -64,24 +62,33 @@ afterEach(() => {
 // ---- notifyJobCompleted ----
 
 describe('notifyJobCompleted', () => {
-  it('sends email when enabled and on_job_completed=true', async () => {
-    mockFetchWithPrefs({ enabled: true, on_job_completed: true, on_job_failed: true, on_pr_opened: true })
+  it('sends with correct template slug and recipient when enabled', async () => {
+    mockFetchWithPrefs(allEnabled)
     await notifyJobCompleted('user-1', baseEmailData)
+
     expect(mockSend).toHaveBeenCalledOnce()
-    const call = mockSend.mock.calls[0][0] as { to: string; subject: string; html: string }
-    expect(call.to).toBe('user@example.com')
-    expect(call.subject).toContain('owner/repo')
-    expect(call.html).toContain('<!DOCTYPE html>')
+    const opts = mockSend.mock.calls[0][0] as { to: string; templateSlug: string; variables: Record<string, string> }
+    expect(opts.to).toBe('user@example.com')
+    expect(opts.templateSlug).toBe(TEMPLATE_SLUGS.JOB_COMPLETED)
   })
 
-  it('does not send email when master enabled=false', async () => {
-    mockFetchWithPrefs({ enabled: false, on_job_completed: true, on_job_failed: true, on_pr_opened: true })
+  it('passes repo_full_name and agent_name as variables', async () => {
+    mockFetchWithPrefs(allEnabled)
+    await notifyJobCompleted('user-1', baseEmailData)
+
+    const opts = mockSend.mock.calls[0][0] as { variables: Record<string, string> }
+    expect(opts.variables.repo_full_name).toBe('owner/repo')
+    expect(opts.variables.agent_name).toBe('Claude Code')
+  })
+
+  it('does not send when master enabled=false', async () => {
+    mockFetchWithPrefs({ ...allEnabled, enabled: false })
     await notifyJobCompleted('user-1', baseEmailData)
     expect(mockSend).not.toHaveBeenCalled()
   })
 
-  it('does not send email when on_job_completed=false', async () => {
-    mockFetchWithPrefs({ enabled: true, on_job_completed: false, on_job_failed: true, on_pr_opened: true })
+  it('does not send when on_job_completed=false', async () => {
+    mockFetchWithPrefs({ ...allEnabled, on_job_completed: false })
     await notifyJobCompleted('user-1', baseEmailData)
     expect(mockSend).not.toHaveBeenCalled()
   })
@@ -102,16 +109,24 @@ describe('notifyJobCompleted', () => {
 // ---- notifyJobFailed ----
 
 describe('notifyJobFailed', () => {
-  it('sends email when enabled and on_job_failed=true', async () => {
-    mockFetchWithPrefs({ enabled: true, on_job_completed: true, on_job_failed: true, on_pr_opened: true })
+  it('sends with job_failed template slug', async () => {
+    mockFetchWithPrefs(allEnabled)
     await notifyJobFailed('user-1', { ...baseEmailData, errorMessage: 'timeout' })
+
     expect(mockSend).toHaveBeenCalledOnce()
-    const call = mockSend.mock.calls[0][0] as { html: string }
-    expect(call.html).toContain('timeout')
+    const opts = mockSend.mock.calls[0][0] as { templateSlug: string; variables: Record<string, string> }
+    expect(opts.templateSlug).toBe(TEMPLATE_SLUGS.JOB_FAILED)
+    expect(opts.variables.error_message).toBe('timeout')
   })
 
-  it('does not send email when on_job_failed=false', async () => {
-    mockFetchWithPrefs({ enabled: true, on_job_completed: true, on_job_failed: false, on_pr_opened: true })
+  it('does not send when on_job_failed=false', async () => {
+    mockFetchWithPrefs({ ...allEnabled, on_job_failed: false })
+    await notifyJobFailed('user-1', baseEmailData)
+    expect(mockSend).not.toHaveBeenCalled()
+  })
+
+  it('does not send when master disabled', async () => {
+    mockFetchWithPrefs({ ...allEnabled, enabled: false })
     await notifyJobFailed('user-1', baseEmailData)
     expect(mockSend).not.toHaveBeenCalled()
   })
@@ -120,16 +135,18 @@ describe('notifyJobFailed', () => {
 // ---- notifyPROpened ----
 
 describe('notifyPROpened', () => {
-  it('sends email when enabled and on_pr_opened=true', async () => {
-    mockFetchWithPrefs({ enabled: true, on_job_completed: true, on_job_failed: true, on_pr_opened: true })
+  it('sends with pr_opened template slug', async () => {
+    mockFetchWithPrefs(allEnabled)
     await notifyPROpened('user-1', { ...baseEmailData, prUrl: 'https://github.com/owner/repo/pull/5' })
+
     expect(mockSend).toHaveBeenCalledOnce()
-    const call = mockSend.mock.calls[0][0] as { html: string }
-    expect(call.html).toContain('Pull request opened')
+    const opts = mockSend.mock.calls[0][0] as { templateSlug: string; variables: Record<string, string> }
+    expect(opts.templateSlug).toBe(TEMPLATE_SLUGS.PR_OPENED)
+    expect(opts.variables.pr_url).toBe('https://github.com/owner/repo/pull/5')
   })
 
-  it('does not send email when on_pr_opened=false', async () => {
-    mockFetchWithPrefs({ enabled: true, on_job_completed: true, on_job_failed: true, on_pr_opened: false })
+  it('does not send when on_pr_opened=false', async () => {
+    mockFetchWithPrefs({ ...allEnabled, on_pr_opened: false })
     await notifyPROpened('user-1', baseEmailData)
     expect(mockSend).not.toHaveBeenCalled()
   })

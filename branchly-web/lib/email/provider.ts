@@ -1,18 +1,20 @@
-export interface EmailPayload {
+export interface EmailSendOptions {
   to: string
   subject: string
-  html: string
+  templateSlug: string
+  variables: Record<string, string>
 }
 
 export interface EmailProvider {
-  send(payload: EmailPayload): Promise<void>
+  send(options: EmailSendOptions): Promise<void>
 }
 
 export class StubEmailProvider implements EmailProvider {
-  async send(payload: EmailPayload): Promise<void> {
+  async send(options: EmailSendOptions): Promise<void> {
     console.log('[EmailProvider:stub] Sending email:')
-    console.log(`  To: ${payload.to}`)
-    console.log(`  Subject: ${payload.subject}`)
-    console.log(`  HTML length: ${payload.html.length} chars`)
+    console.log(`  To: ${options.to}`)
+    console.log(`  Subject: ${options.subject}`)
+    console.log(`  Template: ${options.templateSlug}`)
+    console.log(`  Variables: ${JSON.stringify(options.variables)}`)
   }
 }
