@@ -13,11 +13,11 @@ const agents = [
     initials: "GP",
     name: "GPT-4o / Codex",
     desc: "OpenAI models via API. Bring your own key.",
-    tag: "Coming soon",
+    tag: "Active",
     tagStyle:
-      "border-gray-700/60 bg-transparent text-gray-600 dark:border-gray-700",
+      "border-green-900/60 bg-green-950/30 text-green-400 dark:border-green-900/50",
     avatarStyle: "bg-green-950/40 text-green-500",
-    active: false,
+    active: true,
   },
   {
     initials: "GE",

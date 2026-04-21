@@ -10,7 +10,7 @@ export type JobStatus = "pending" | "running" | "completed" | "failed" | "retryi
 
 export type FailureType = "transient" | "permanent" | "";
 
-export type AgentType = "claude-code" | "gemini";
+export type AgentType = "claude-code" | "gemini" | "gpt-codex";
 
 export type GitProvider = "github" | "gitlab" | "azure-devops";
 
@@ -28,6 +28,13 @@ export const AGENTS = [
     provider: "Google",
     description: "Free tier available. Great for testing.",
     badge: "Free tier",
+  },
+  {
+    id: "gpt-codex" as AgentType,
+    name: "GPT Codex",
+    provider: "OpenAI",
+    description: "OpenAI Codex CLI agent. Uses your OpenAI API key.",
+    badge: null,
   },
 ] as const;
 
