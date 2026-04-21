@@ -33,7 +33,7 @@ describe('EmailApiV2Provider — template registration', () => {
       [`PUT ${BASE_URL}/v2/email/templates/${TEMPLATE_SLUGS.PR_OPENED}`]: { status: 200 },
       [`POST ${BASE_URL}/v2/email/send`]: { status: 200, body: { status: 'pending' } },
     })
-    global.fetch = fetchMock as typeof fetch
+    global.fetch = fetchMock as unknown as typeof fetch
 
     const provider = new EmailApiV2Provider(BASE_URL)
     await provider.send({
@@ -57,7 +57,7 @@ describe('EmailApiV2Provider — template registration', () => {
       [`POST ${BASE_URL}/v2/email/templates`]: { status: 201, body: { status: 'created' } },
       [`POST ${BASE_URL}/v2/email/send`]: { status: 200, body: { status: 'pending' } },
     })
-    global.fetch = fetchMock as typeof fetch
+    global.fetch = fetchMock as unknown as typeof fetch
 
     const provider = new EmailApiV2Provider(BASE_URL)
     await provider.send({
@@ -82,7 +82,7 @@ describe('EmailApiV2Provider — template registration', () => {
       [`PUT ${BASE_URL}/v2/email/templates/${TEMPLATE_SLUGS.PR_OPENED}`]: { status: 200 },
       [`POST ${BASE_URL}/v2/email/send`]: { status: 200, body: { status: 'pending' } },
     })
-    global.fetch = fetchMock as typeof fetch
+    global.fetch = fetchMock as unknown as typeof fetch
 
     const provider = new EmailApiV2Provider(BASE_URL)
     await provider.send({ to: 'a@b.com', subject: 'S1', templateSlug: TEMPLATE_SLUGS.JOB_COMPLETED, variables: {} })
@@ -104,7 +104,7 @@ describe('EmailApiV2Provider — send', () => {
       [`PUT ${BASE_URL}/v2/email/templates/${TEMPLATE_SLUGS.PR_OPENED}`]: { status: 200 },
       [`POST ${BASE_URL}/v2/email/send`]: { status: 200, body: { status: 'pending' } },
     })
-    global.fetch = fetchMock as typeof fetch
+    global.fetch = fetchMock as unknown as typeof fetch
 
     const provider = new EmailApiV2Provider(BASE_URL)
     await provider.send({
@@ -134,7 +134,7 @@ describe('EmailApiV2Provider — send', () => {
       [`PUT ${BASE_URL}/v2/email/templates/${TEMPLATE_SLUGS.PR_OPENED}`]: { status: 200 },
       [`POST ${BASE_URL}/v2/email/send`]: { status: 500 },
     })
-    global.fetch = fetchMock as typeof fetch
+    global.fetch = fetchMock as unknown as typeof fetch
 
     const provider = new EmailApiV2Provider(BASE_URL)
     await expect(
@@ -149,7 +149,7 @@ describe('EmailApiV2Provider — send', () => {
       [`PUT ${BASE_URL}/v2/email/templates/${TEMPLATE_SLUGS.PR_OPENED}`]: { status: 200 },
       [`POST ${BASE_URL}/v2/email/send`]: { status: 200, body: { status: 'pending' } },
     })
-    global.fetch = fetchMock as typeof fetch
+    global.fetch = fetchMock as unknown as typeof fetch
 
     const provider = new EmailApiV2Provider(BASE_URL, 'custom@branchly.com')
     await provider.send({ to: 'a@b.com', subject: 'S', templateSlug: TEMPLATE_SLUGS.JOB_COMPLETED, variables: {} })
@@ -168,7 +168,7 @@ describe('EmailApiV2Provider — send', () => {
       [`PUT ${BASE_URL}/v2/email/templates/${TEMPLATE_SLUGS.PR_OPENED}`]: { status: 200 },
       [`POST ${BASE_URL}/v2/email/send`]: { status: 200, body: { status: 'pending' } },
     })
-    global.fetch = fetchMock as typeof fetch
+    global.fetch = fetchMock as unknown as typeof fetch
 
     const provider = new EmailApiV2Provider(`${BASE_URL}/`) // trailing slash
     await provider.send({ to: 'a@b.com', subject: 'S', templateSlug: TEMPLATE_SLUGS.JOB_COMPLETED, variables: {} })
