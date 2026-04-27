@@ -3,3 +3,4 @@ branchly-api/cmd/api/.env
 branchly-runner/.env
 branchly-runner/cmd/runner/.env
 branchly-api/cmd/api/.env
+branchly-web/.env

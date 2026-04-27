@@ -90,6 +90,20 @@ async function SettingsBody() {
         </Card>
       </section>
       <section className="space-y-4">
+        <h2 className="text-lg font-semibold">Notifications</h2>
+        <Card className="flex flex-wrap items-center justify-between gap-4 p-6">
+          <div>
+            <p className="font-medium">Email notifications</p>
+            <p className="text-sm text-gray-500 dark:text-gray-400">
+              Choose which job and pull request updates you receive by email.
+            </p>
+          </div>
+          <Button variant="secondary" size="sm" href="/settings/notifications">
+            Manage →
+          </Button>
+        </Card>
+      </section>
+      <section className="space-y-4">
         <h2 className="text-lg font-semibold">Danger zone</h2>
         <Card className="p-6">
           <DisconnectAccountButton />
