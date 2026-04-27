@@ -85,7 +85,15 @@ func main() {
 	agentFactory := agentpkg.NewFactory(claudeAgent, geminiAgent, codexAgent)
 	providerFactory := gitprovider.NewFactory()
 
-	jobNotifier := notifier.New(userRepo)
+	var emailSender notifier.EmailSender
+	if cfg.EmailProvider == "emailapi-v2" && cfg.EmailAPIURL != "" {
+		emailSender = notifier.NewEmailAPISender(cfg.EmailAPIURL, cfg.EmailFrom, cfg.EmailTimeout)
+		slog.Info("runner email sender enabled", "provider", cfg.EmailProvider)
+	} else {
+		emailSender = notifier.NewStubSender()
+		slog.Info("runner email sender in stub mode", "provider", cfg.EmailProvider)
+	}
+	jobNotifier := notifier.New(userRepo, emailSender)
 
 	ex := executor.NewExecutor(
 		agentFactory,

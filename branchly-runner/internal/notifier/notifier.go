@@ -2,7 +2,6 @@ package notifier
 
 import (
 	"context"
-	"fmt"
 	"log/slog"
 	"time"
 
@@ -25,11 +24,14 @@ type JobNotifData struct {
 
 type Notifier struct {
 	users  domain.UserRepository
-	sender func(event, to string, data JobNotifData)
+	sender EmailSender
 }
 
-func New(users domain.UserRepository) *Notifier {
-	return &Notifier{users: users, sender: logEmail}
+func New(users domain.UserRepository, sender EmailSender) *Notifier {
+	if sender == nil {
+		sender = NewStubSender()
+	}
+	return &Notifier{users: users, sender: sender}
 }
 
 func (n *Notifier) fetchUser(ctx context.Context, userID string) (*domain.User, bool) {
@@ -47,17 +49,6 @@ func (n *Notifier) fetchUser(ctx context.Context, userID string) (*domain.User, 
 	return user, true
 }
 
-func logEmail(event, to string, data JobNotifData) {
-	slog.Info("[notifier:stub] would send email",
-		"event", event,
-		"to", to,
-		"repo", data.RepoFullName,
-		"branch", data.BranchName,
-		"agent", data.AgentName,
-		"duration_s", fmt.Sprintf("%.0f", data.DurationSeconds),
-	)
-}
-
 func (n *Notifier) NotifyJobCompleted(ctx context.Context, data JobNotifData) {
 	user, ok := n.fetchUser(ctx, data.UserID)
 	if !ok {
@@ -67,7 +58,9 @@ func (n *Notifier) NotifyJobCompleted(ctx context.Context, data JobNotifData) {
 	if !prefs.Enabled || !prefs.OnJobCompleted {
 		return
 	}
-	n.sender("job_completed", user.Email, data)
+	if err := n.sender.Send(ctx, "job_completed", user.Email, data); err != nil {
+		slog.Warn("notifier: send failed", "event", "job_completed", "user_id", data.UserID, "error", err)
+	}
 }
 
 func (n *Notifier) NotifyJobFailed(ctx context.Context, data JobNotifData) {
@@ -79,7 +72,9 @@ func (n *Notifier) NotifyJobFailed(ctx context.Context, data JobNotifData) {
 	if !prefs.Enabled || !prefs.OnJobFailed {
 		return
 	}
-	n.sender("job_failed", user.Email, data)
+	if err := n.sender.Send(ctx, "job_failed", user.Email, data); err != nil {
+		slog.Warn("notifier: send failed", "event", "job_failed", "user_id", data.UserID, "error", err)
+	}
 }
 
 func (n *Notifier) NotifyPROpened(ctx context.Context, data JobNotifData) {
@@ -91,5 +86,7 @@ func (n *Notifier) NotifyPROpened(ctx context.Context, data JobNotifData) {
 	if !prefs.Enabled || !prefs.OnPROpened {
 		return
 	}
-	n.sender("pr_opened", user.Email, data)
+	if err := n.sender.Send(ctx, "pr_opened", user.Email, data); err != nil {
+		slog.Warn("notifier: send failed", "event", "pr_opened", "user_id", data.UserID, "error", err)
+	}
 }

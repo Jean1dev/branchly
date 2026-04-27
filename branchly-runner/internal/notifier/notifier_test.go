@@ -28,10 +28,14 @@ type sentEmail struct {
 	data  JobNotifData
 }
 
-func captureSender(calls *[]sentEmail) func(event, to string, data JobNotifData) {
-	return func(event, to string, data JobNotifData) {
-		*calls = append(*calls, sentEmail{event: event, to: to, data: data})
-	}
+type mockSender struct {
+	calls *[]sentEmail
+	err   error
+}
+
+func (m *mockSender) Send(_ context.Context, event, to string, data JobNotifData) error {
+	*m.calls = append(*m.calls, sentEmail{event: event, to: to, data: data})
+	return m.err
 }
 
 func allEnabledUser() *domain.User {
@@ -65,7 +69,7 @@ func testData() JobNotifData {
 func newNotifier(user *domain.User, userErr error, calls *[]sentEmail) *Notifier {
 	return &Notifier{
 		users:  &mockUserRepo{user: user, err: userErr},
-		sender: captureSender(calls),
+		sender: &mockSender{calls: calls},
 	}
 }
 

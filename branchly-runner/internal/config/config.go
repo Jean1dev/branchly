@@ -26,6 +26,10 @@ type Config struct {
 	AnthropicAPIKey string
 	GeminiAPIKey    string
 	OpenAIAPIKey    string
+	EmailProvider   string
+	EmailAPIURL     string
+	EmailFrom       string
+	EmailTimeout    time.Duration
 }
 
 func Load() (*Config, error) {
@@ -78,6 +82,14 @@ func Load() (*Config, error) {
 		shutdownTimeout = d
 	}
 	environment := strings.ToLower(strings.TrimSpace(os.Getenv("ENVIRONMENT")))
+	emailTimeout := 10 * time.Second
+	if v := strings.TrimSpace(os.Getenv("EMAIL_TIMEOUT")); v != "" {
+		d, err := time.ParseDuration(v)
+		if err != nil || d < time.Second {
+			return nil, fmt.Errorf("config: EMAIL_TIMEOUT must be a valid duration >= 1s (e.g. 10s, 1m)")
+		}
+		emailTimeout = d
+	}
 
 	return &Config{
 		Port:              port,
@@ -92,5 +104,9 @@ func Load() (*Config, error) {
 		AnthropicAPIKey:   strings.TrimSpace(os.Getenv("ANTHROPIC_API_KEY")),
 		GeminiAPIKey:      strings.TrimSpace(os.Getenv("GEMINI_API_KEY")),
 		OpenAIAPIKey:      strings.TrimSpace(os.Getenv("OPENAI_API_KEY")),
+		EmailProvider:     strings.TrimSpace(os.Getenv("EMAIL_PROVIDER")),
+		EmailAPIURL:       strings.TrimSpace(os.Getenv("EMAIL_API_URL")),
+		EmailFrom:         strings.TrimSpace(os.Getenv("EMAIL_FROM")),
+		EmailTimeout:      emailTimeout,
 	}, nil
 }
