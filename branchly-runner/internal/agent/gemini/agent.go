@@ -27,7 +27,7 @@ func (a *Agent) Run(ctx context.Context, input domain.AgentInput) (string, error
 	cmd := exec.CommandContext(ctx, geminiPath, "--prompt", input.Prompt, "--yolo")
 	cmd.Dir = input.WorkDir
 	cmd.Stdin = strings.NewReader("")
-	env := append(os.Environ(), "CI=true", "TERM=dumb")
+	env := append(os.Environ(), "CI=true", "TERM=dumb", "GEMINI_CLI_TRUST_WORKSPACE=true")
 	if input.APIKey != "" {
 		env = append(env, "GEMINI_API_KEY="+input.APIKey)
 	}
