@@ -74,6 +74,7 @@ func main() {
 	internalH := handler.NewInternalHandler(jobSvc)
 	internalAuthH := handler.NewInternalAuthHandler(authSvc)
 	apiKeyH := handler.NewAPIKeyHandler(apiKeySvc)
+	notifPrefsH := handler.NewNotificationPrefsHandler(userRepo)
 
 	gin.SetMode(gin.ReleaseMode)
 	r := gin.New()
@@ -108,6 +109,9 @@ func main() {
 		protected.GET("/settings/api-keys", apiKeyH.List)
 		protected.PUT("/settings/api-keys/:provider", apiKeyH.Save)
 		protected.DELETE("/settings/api-keys/:provider", apiKeyH.Delete)
+
+		protected.GET("/settings/notification-preferences", notifPrefsH.Get)
+		protected.PATCH("/settings/notification-preferences", notifPrefsH.Patch)
 	}
 
 	internal := r.Group("/internal")
@@ -116,6 +120,7 @@ func main() {
 		internal.POST("/auth/upsert", internalAuthH.Upsert)
 		internal.POST("/jobs/:id/status", internalH.UpdateStatus)
 		internal.POST("/jobs/:id/logs", internalH.AppendLog)
+		internal.GET("/users/:id/notification-preferences", notifPrefsH.GetInternal)
 	}
 
 	srv := &http.Server{
